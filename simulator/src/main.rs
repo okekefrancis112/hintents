@@ -103,15 +103,59 @@ fn main() {
         }
     }
 
+    let mut invocation_logs = vec![];
+    
+    // Extract Operations from Envelope
+    let operations = match &envelope {
+        soroban_env_host::xdr::TransactionEnvelope::Tx(tx_v1) => &tx_v1.tx.operations,
+        soroban_env_host::xdr::TransactionEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
+        soroban_env_host::xdr::TransactionEnvelope::TxFeeBump(bump) => {
+             match &bump.tx.inner_tx {
+                 soroban_env_host::xdr::TxEnvelope::Tx(tx_v1) => &tx_v1.tx.operations,
+                 soroban_env_host::xdr::TxEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
+            }
+        }
+    };
+
+    // Iterate and find InvokeHostFunction
+    for op in operations.iter() {
+        if let soroban_env_host::xdr::OperationBody::InvokeHostFunction(host_fn_op) = &op.body {
+            match &host_fn_op.host_function {
+                soroban_env_host::xdr::HostFunction::InvokeContract(invoke_args) => {
+                    eprintln!("Found InvokeContract operation!");
+                    
+                    let address = &invoke_args.contract_address;
+                    let func_name = &invoke_args.function_name;
+                    let invoke_args_vec = &invoke_args.args;
+
+                    // Let's just FORMAT the data for now as proof of "Replay Logic" extraction.
+                    invocation_logs.push(format!("About to Invoke Contract: {:?}", address));
+                    invocation_logs.push(format!("Function: {:?}", func_name));
+                    invocation_logs.push(format!("Args Count: {}", invoke_args_vec.len()));
+
+                    // In a full implementation, we'd do:
+                    // let res = host.invoke_function(Host::from_xdr(address), ...);
+                },
+                _ => {
+                    invocation_logs.push("Skipping non-InvokeContract Host Function".to_string());
+                }
+            }
+        }
+    }
+
     // Mock Success Response
     let response = SimulationResponse {
         status: "success".to_string(),
         error: None,
         events: vec![format!("Parsed Envelope: {:?}", envelope)],
-        logs: vec![
-            format!("Host Initialized with Budget: {:?}", host.budget_cloned()),
-            format!("Loaded {} Ledger Entries", loaded_entries_count)
-        ],
+        logs: {
+             let mut logs = vec![
+                format!("Host Initialized with Budget: {:?}", host.budget_cloned()),
+                format!("Loaded {} Ledger Entries", loaded_entries_count)
+             ];
+             logs.extend(invocation_logs);
+             logs
+        },
     };
 
     println!("{}", serde_json::to_string(&response).unwrap());
