@@ -111,8 +111,8 @@ fn main() {
         soroban_env_host::xdr::TransactionEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
         soroban_env_host::xdr::TransactionEnvelope::TxFeeBump(bump) => {
              match &bump.tx.inner_tx {
-                 soroban_env_host::xdr::TxEnvelope::Tx(tx_v1) => &tx_v1.tx.operations,
-                 soroban_env_host::xdr::TxEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
+                 soroban_env_host::xdr::TransactionEnvelope::Tx(tx_v1) => &tx_v1.tx.operations,
+                 soroban_env_host::xdr::TransactionEnvelope::TxV0(tx_v0) => &tx_v0.tx.operations,
             }
         }
     };
@@ -143,11 +143,27 @@ fn main() {
         }
     }
 
+    // Capture Diagnostic Events
+    // Note: In soroban-env-host > v20, 'get_events' returns inputs to internal event system.
+    // We want the literal events if possible, or formatted via 'events'.
+    // The previous mocked response just had "Parsed Envelope".
+    // Now we extract real events.
+    
+    // We need to clone them out or iterate. 'host.get_events()' returns a reflected vector.
+    // Detailed event retrieval typically requires iterating host storage or using the events buffer.
+    // For MVP, we will try `host.events().0` if accessible or just `host.get_events()`.
+    // Actually `host.get_events()` returns `Result<Vec<HostEvent>, ...>`.
+    
+    let events = match host.get_events() {
+        Ok(evs) => evs.iter().map(|e| format!("{:?}", e)).collect::<Vec<String>>(),
+        Err(e) => vec![format!("Failed to retrieve events: {:?}", e)],
+    };
+
     // Mock Success Response
     let response = SimulationResponse {
         status: "success".to_string(),
         error: None,
-        events: vec![format!("Parsed Envelope: {:?}", envelope)],
+        events: events,
         logs: {
              let mut logs = vec![
                 format!("Host Initialized with Budget: {:?}", host.budget_cloned()),
