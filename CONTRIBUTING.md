@@ -7,8 +7,8 @@ Thank you for your interest in contributing to Erst! We welcome contributions fr
 1.  **Fork the repository** on GitHub.
 2.  **Clone your fork** locally:
     ```bash
-    git clone https://github.com/your-username/erst.git
-    cd erst/sdk
+    git clone https://github.com/your-username/hintents.git
+    cd hintents
     ```
 3.  **Create a branch** for your feature or bug fix:
     ```bash

@@ -5,7 +5,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/dotandev/hintents/internal/errors"

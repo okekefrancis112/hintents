@@ -217,33 +217,6 @@ func newTestClient(mock horizonclient.ClientInterface) *testClient {
 }
 
 func TestGetTransaction(t *testing.T) {
-       tests := []struct {
-	       name      string
-	       hash      string
-	       mockFunc  func(hash string) (hProtocol.Transaction, error)
-	       expectErr bool
-       }{
-	       {
-		       name: "success",
-		       hash: "abc123",
-		       mockFunc: func(hash string) (hProtocol.Transaction, error) {
-			       return hProtocol.Transaction{
-				       EnvelopeXdr:   "envelope-xdr",
-				       ResultXdr:     "result-xdr",
-				       ResultMetaXdr: "meta-xdr",
-			       }, nil
-		       },
-		       expectErr: false,
-	       },
-	       {
-		       name: "error",
-		       hash: "fail",
-		       mockFunc: func(hash string) (hProtocol.Transaction, error) {
-			       return hProtocol.Transaction{}, errors.ErrTransactionNotFound
-		       },
-		       expectErr: true,
-	       },
-       }
 	tests := []struct {
 		name      string
 		hash      string
@@ -266,7 +239,7 @@ func TestGetTransaction(t *testing.T) {
 			name: "error",
 			hash: "fail",
 			mockFunc: func(hash string) (hProtocol.Transaction, error) {
-				return hProtocol.Transaction{}, errors.New("not found")
+				return hProtocol.Transaction{}, errors.ErrTransactionNotFound
 			},
 			expectErr: true,
 		},

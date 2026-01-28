@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Comprehensive Hash Consistency Verification ===\n")
+	fmt.Println("=== Comprehensive Hash Consistency Verification ===")
 
 	tests := []struct {
 		name     string
