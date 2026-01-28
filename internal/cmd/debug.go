@@ -10,6 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	networkFlag string
+	rpcURLFlag  string
+)
+
 var debugCmd = &cobra.Command{
 	Use:   "debug <transaction-hash>",
 	Short: "Debug a failed Soroban transaction",
@@ -17,24 +22,40 @@ var debugCmd = &cobra.Command{
 
 Example:
   erst debug 5c0a1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
-  erst --network testnet debug <tx-hash>`,
+  erst debug --network testnet <tx-hash>`,
 	Args: cobra.ExactArgs(1),
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// Validate network flag
+		switch rpc.Network(networkFlag) {
+		case rpc.Testnet, rpc.Mainnet, rpc.Futurenet:
+			return nil
+		default:
+			return fmt.Errorf("invalid network: %s. Must be one of: testnet, mainnet, futurenet", networkFlag)
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		txHash := args[0]
 
-		// Create RPC client with the selected network
-		client := rpc.NewClient(rpc.Network(NetworkFlag))
+		var client *rpc.Client
+		if rpcURLFlag != "" {
+			client = rpc.NewClientWithURL(rpcURLFlag, rpc.Network(networkFlag))
+		} else {
+			client = rpc.NewClient(rpc.Network(networkFlag))
+		}
 
 		fmt.Printf("Debugging transaction: %s\n", txHash)
-		fmt.Printf("Using network: %s\n", NetworkFlag)
-		fmt.Printf("Horizon URL: %s\n", client.Horizon.HorizonURL)
-
-		// Fetch transaction
-		txResp, err := client.GetTransaction(context.Background(), txHash)
-		if err != nil {
-			return err
+		fmt.Printf("Network: %s\n", networkFlag)
+		if rpcURLFlag != "" {
+			fmt.Printf("RPC URL: %s\n", rpcURLFlag)
 		}
-		fmt.Printf("Transaction found with envelope XDR size: %d bytes\n", len(txResp.EnvelopeXdr))
+
+		// Fetch transaction details
+		resp, err := client.GetTransaction(cmd.Context(), txHash)
+		if err != nil {
+			return fmt.Errorf("failed to fetch transaction: %w", err)
+		}
+
+		fmt.Printf("Transaction fetched successfully. Envelope size: %d bytes\n", len(resp.EnvelopeXdr))
 
 		// Run simulation
 		simRunner, err := simulator.NewRunner()
@@ -43,8 +64,8 @@ Example:
 		}
 
 		simReq := &simulator.SimulationRequest{
-			EnvelopeXdr:   txResp.EnvelopeXdr,
-			ResultMetaXdr: txResp.ResultMetaXdr,
+			EnvelopeXdr:   resp.EnvelopeXdr,
+			ResultMetaXdr: resp.ResultMetaXdr,
 			Profile:       ProfileFlag,
 		}
 
@@ -67,5 +88,8 @@ Example:
 }
 
 func init() {
+	debugCmd.Flags().StringVarP(&networkFlag, "network", "n", string(rpc.Mainnet), "Stellar network to use (testnet, mainnet, futurenet)")
+	debugCmd.Flags().StringVar(&rpcURLFlag, "rpc-url", "", "Custom Horizon RPC URL to use")
+
 	rootCmd.AddCommand(debugCmd)
 }

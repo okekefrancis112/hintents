@@ -3,16 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
+
+	"github.com/dotandev/hintents/internal/cmd"
 )
 
 func main() {
-	fmt.Println("Erst CLI starting...")
-	
-	if len(os.Args) > 1 {
-		fmt.Printf("Arguments: %v\n", os.Args[1:])
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
-
-	fmt.Println("Ready.")
-    time.Sleep(1 * time.Second)
 }

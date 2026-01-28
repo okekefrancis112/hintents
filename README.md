@@ -24,16 +24,23 @@ Fetches a transaction envelope from the Stellar Public network and prints its XD
 ./erst debug <transaction-hash>
 ```
 
+## Documentation
+
+- **[Architecture Overview](docs/architecture.md)**: Deep dive into how the Go CLI communicates with the Rust simulator, including data flow, IPC mechanisms, and design decisions.
+- **[Project Proposal](docs/proposal.md)**: Detailed project proposal and roadmap.
+
 ## Technical Analysis
 
 ### The Challenge
 Stellar's `soroban-env-host` executes WASM. When it traps (crashes), the specific reason is often sanitized or lost in the XDR result to keep the ledger size small.
 
 ### The Solution Architecture
-`erst` will likely operate by:
+`erst` operates by:
 1.  **Fetching Data**: Using the Stellar RPC to get the `TransactionEnvelope` and `LedgerFootprint` (read/write set) for the block where the tx failed.
-2.  **Simulation Environment**: integrating with the `soroban-sdk` (likely via Rust FFI or a mock environment) to load the contract WASM.
+2.  **Simulation Environment**: A Rust binary (`erst-sim`) that integrates with `soroban-env-host` to replay transactions.
 3.  **Execution**: Feeding the inputs into the VM and capturing `diagnostic_events`.
+
+For a detailed explanation of the architecture, see [docs/architecture.md](docs/architecture.md).
 
 ## How to Contribute
 
@@ -41,7 +48,7 @@ We are building this open-source to help the entire Stellar community.
 
 ### Prerequisites
 -   Go 1.21+
--   Rust (for Soroban FFI bindings)
+-   Rust (for building the simulator binary)
 -   Stellar CLI (for comparing results)
 
 ### Getting Started
@@ -50,7 +57,13 @@ We are building this open-source to help the entire Stellar community.
     git clone https://github.com/dotandev/hintents.git
     cd hintents
     ```
-2.  Run tests:
+2.  Build the Rust simulator:
+    ```bash
+    cd simulator
+    cargo build --release
+    cd ..
+    ```
+3.  Run tests:
     ```bash
     go test ./...
     ```
