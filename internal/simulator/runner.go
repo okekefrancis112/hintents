@@ -12,7 +12,6 @@ import (
 	"github.com/dotandev/hintents/internal/logger"
 	"github.com/dotandev/hintents/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Runner handles the execution of the Rust simulator binary
@@ -54,11 +53,8 @@ func NewRunner() (*Runner, error) {
 // Run executes the simulation with the given request
 func (r *Runner) Run(ctx context.Context, req *SimulationRequest) (*SimulationResponse, error) {
 	tracer := telemetry.GetTracer()
-	ctx, span := tracer.Start(ctx, "simulate_transaction",
-		trace.WithAttributes(
-			attribute.String("simulator.binary_path", r.BinaryPath),
-		),
-	)
+	ctx, span := tracer.Start(ctx, "simulate_transaction")
+	span.SetAttributes(attribute.String("simulator.binary_path", r.BinaryPath))
 	defer span.End()
 
 	logger.Logger.Debug("Starting simulation", "binary", r.BinaryPath)

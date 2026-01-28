@@ -7,7 +7,6 @@ import (
 	"github.com/dotandev/hintents/internal/telemetry"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -56,11 +55,10 @@ Example:
 
 		// Start root span for transaction debugging
 		tracer := telemetry.GetTracer()
-		ctx, span := tracer.Start(ctx, "debug_transaction",
-			trace.WithAttributes(
-				attribute.String("transaction.hash", txHash),
-				attribute.String("network", networkFlag),
-			),
+		ctx, span := tracer.Start(ctx, "debug_transaction")
+		span.SetAttributes(
+			attribute.String("transaction.hash", txHash),
+			attribute.String("network", networkFlag),
 		)
 		defer span.End()
 

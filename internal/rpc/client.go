@@ -9,7 +9,6 @@ import (
 	"github.com/dotandev/hintents/internal/telemetry"
 	"github.com/stellar/go/clients/horizonclient"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Network types for Stellar
@@ -87,11 +86,10 @@ type TransactionResponse struct {
 // GetTransaction fetches the transaction details and full XDR data
 func (c *Client) GetTransaction(ctx context.Context, hash string) (*TransactionResponse, error) {
 	tracer := telemetry.GetTracer()
-	ctx, span := tracer.Start(ctx, "rpc_get_transaction",
-		trace.WithAttributes(
-			attribute.String("transaction.hash", hash),
-			attribute.String("network", string(c.Network)),
-		),
+	ctx, span := tracer.Start(ctx, "rpc_get_transaction")
+	span.SetAttributes(
+		attribute.String("transaction.hash", hash),
+		attribute.String("network", string(c.Network)),
 	)
 	defer span.End()
 
