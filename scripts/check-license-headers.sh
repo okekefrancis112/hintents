@@ -21,7 +21,7 @@ while IFS= read -r file; do
     else
         echo "  ✅ $file"
     fi
-done < <(find . -name "*.go" -type f)
+done < <(find . -type d \( -name "target" -o -name "vendor" \) -prune -o -name "*.go" -type f -print)
 
 # Check Rust files
 echo ""
@@ -33,7 +33,7 @@ while IFS= read -r file; do
     else
         echo "  ✅ $file"
     fi
-done < <(find . -name "*.rs" -type f)
+done < <(find . -type d \( -name "target" -o -name "vendor" \) -prune -o -name "*.rs" -type f -print)
 
 echo ""
 if [ $MISSING_HEADERS -eq 0 ]; then
