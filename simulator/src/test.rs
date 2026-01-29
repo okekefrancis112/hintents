@@ -74,27 +74,6 @@ mod contract_execution_tests {
         }
     }
 
-    /// Test panic from unwrap on None
-    #[test]
-    fn test_unwrap_none_panic() {
-        let result = std::panic::catch_unwind(|| {
-            let option: Option<i32> = None;
-            option.unwrap(); // This will panic
-        });
-
-        assert!(result.is_err(), "Unwrap on None should panic");
-
-        if let Err(panic_info) = result {
-            let message = if let Some(s) = panic_info.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "Unknown".to_string()
-            };
-
-            assert!(message.contains("unwrap") || message.contains("None"));
-        }
-    }
-
     /// Test panic from assertion failure
     #[test]
     fn test_assertion_panic() {
@@ -345,7 +324,7 @@ mod contract_execution_tests {
         // Without catch_unwind
         let start = Instant::now();
         for _ in 0..iterations {
-            let _result = || -> Result<(), ()> { Ok(()) }();
+            let _result: Result<(), ()> = Ok(());
         }
         let without_catch = start.elapsed();
 

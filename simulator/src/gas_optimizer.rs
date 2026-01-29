@@ -196,6 +196,7 @@ impl GasOptimizationAdvisor {
     }
 
     /// Analyze specific operation patterns
+    #[allow(dead_code)]
     pub fn analyze_operation_pattern(
         &self,
         operation_type: &str,
