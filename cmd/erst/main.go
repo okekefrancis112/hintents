@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"github.com/dotandev/hintents/internal/cmd"
-	"github.com/dotandev/hintents/internal/updater"
 	"github.com/dotandev/hintents/internal/decoder"
+	"github.com/dotandev/hintents/internal/updater"
 )
 
 // Version is the current version of erst
@@ -24,7 +24,7 @@ func main() {
 	}
 	cmd.Version = Version
 
-	env, err := decoder.DecodeEnvelope(os.Args[1])
+	env, err := decoder.AnalyzeEnvelope(os.Args[1])
 	if err != nil {
 		panic(err)
 	}

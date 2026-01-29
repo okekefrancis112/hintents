@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dotandev/hintents/internal/db"
 	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/dotandev/hintents/internal/session"
@@ -151,20 +150,6 @@ Example:
 			SchemaVersion:   session.SchemaVersion,
 		}
 
-			}
-		}
-		if len(simResp.Logs) > 0 {
-			fmt.Printf("  Logs: %d\n", len(simResp.Logs))
-			for i, log := range simResp.Logs {
-				if i < 5 { // Show first 5 logs
-					fmt.Printf("    - %s\n", log)
-				}
-			}
-			if len(simResp.Logs) > 5 {
-				fmt.Printf("    ... and %d more\n", len(simResp.Logs)-5)
-			}
-		}
-
 		// Token flow summary (native XLM + Soroban SAC via diagnostic events in ResultMetaXdr)
 		if report, err := tokenflow.BuildReport(txResp.EnvelopeXdr, txResp.ResultMetaXdr); err != nil {
 			fmt.Printf("\nToken Flow Summary: (failed to parse: %v)\n", err)
@@ -177,34 +162,6 @@ Example:
 			}
 			fmt.Printf("\nToken Flow Chart (Mermaid):\n")
 			fmt.Println(report.MermaidFlowchart())
-		}
-
-		// Serialize simulation request/response for session storage
-		simReqJSON, err := json.Marshal(simReq)
-		if err != nil {
-			return fmt.Errorf("failed to marshal simulation request: %w", err)
-		}
-		simRespJSON, err := json.Marshal(simResp)
-		if err != nil {
-			return fmt.Errorf("failed to marshal simulation response: %w", err)
-		}
-
-		// Create session data
-		sessionData := &session.SessionData{
-			ID:              session.GenerateID(txHash),
-			CreatedAt:       time.Now(),
-			LastAccessAt:    time.Now(),
-			Status:          "active",
-			Network:         networkFlag,
-			HorizonURL:      horizonURL,
-			TxHash:          txHash,
-			EnvelopeXdr:     txResp.EnvelopeXdr,
-			ResultXdr:       txResp.ResultXdr,
-			ResultMetaXdr:   txResp.ResultMetaXdr,
-			SimRequestJSON:  string(simReqJSON),
-			SimResponseJSON: string(simRespJSON),
-			ErstVersion:     getErstVersion(),
-			SchemaVersion:   session.SchemaVersion,
 		}
 
 		// Store as current session for potential saving

@@ -1,3 +1,6 @@
+// Copyright 2025 Erst Users
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -152,7 +155,7 @@ func generateEvents(count, dataSize int) []TraceEvent {
 		for j := 0; j < dataSize; j++ {
 			data[fmt.Sprintf("key_%d", j)] = fmt.Sprintf("value_%d_%d", i, j)
 		}
-		
+
 		events[i] = TraceEvent{
 			Type:       "contract_event",
 			Timestamp:  int64(1000000 + i*1000),
@@ -175,7 +178,7 @@ func generateDeeplyNestedEvents(count, nestingDepth int) []TraceEvent {
 	events := make([]TraceEvent, count)
 	for i := 0; i < count; i++ {
 		data := generateNestedMap(nestingDepth, i)
-		
+
 		events[i] = TraceEvent{
 			Type:       "nested_contract_event",
 			Timestamp:  int64(1000000 + i*1000),
@@ -198,7 +201,7 @@ func generateNestedMap(depth, seed int) map[string]interface{} {
 			"timestamp": int64(1000000 + seed),
 		}
 	}
-	
+
 	return map[string]interface{}{
 		"level":  depth,
 		"nested": generateNestedMap(depth-1, seed),
@@ -217,7 +220,7 @@ func generateNestedMap(depth, seed int) map[string]interface{} {
 func generateDiagnostics(count int) []DiagnosticEvent {
 	diagnostics := make([]DiagnosticEvent, count)
 	levels := []string{"DEBUG", "INFO", "WARNING", "ERROR"}
-	
+
 	for i := 0; i < count; i++ {
 		diagnostics[i] = DiagnosticEvent{
 			Level:   levels[i%len(levels)],
@@ -228,7 +231,7 @@ func generateDiagnostics(count int) []DiagnosticEvent {
 				"timestamp": int64(1000000 + i*500),
 				"contract":  fmt.Sprintf("CONTRACT_%d", i%10),
 				"details": map[string]interface{}{
-					"function": fmt.Sprintf("func_%d", i%15),
+					"function":   fmt.Sprintf("func_%d", i%15),
 					"args_count": i % 5,
 				},
 			},
@@ -242,11 +245,11 @@ func writeTraceToFile(trace *TransactionTrace, filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal trace: %w", err)
 	}
-	
+
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
-	
+
 	fmt.Printf("Generated %s (%.2f KB)\n", filename, float64(len(data))/1024)
 	return nil
 }
@@ -257,14 +260,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to create testdata directory: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	traces := map[string]*TransactionTrace{
-		"small_trace.json":          generateSmallTrace(),
-		"medium_trace.json":         generateMediumTrace(),
-		"large_trace.json":          generateLargeTrace(),
+		"small_trace.json":         generateSmallTrace(),
+		"medium_trace.json":        generateMediumTrace(),
+		"large_trace.json":         generateLargeTrace(),
 		"deeply_nested_trace.json": generateDeeplyNestedTrace(),
 	}
-	
+
 	for filename, trace := range traces {
 		fullPath := filepath.Join("testdata", filename)
 		if err := writeTraceToFile(trace, fullPath); err != nil {
@@ -272,6 +275,6 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	
+
 	fmt.Println("\nAll test traces generated successfully!")
 }

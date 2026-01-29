@@ -1,4 +1,7 @@
-package decoder
+// Copyright 2025 Erst Users
+// SPDX-License-Identifier: Apache-2.0
+
+package tests
 
 import (
 	"bytes"
@@ -11,10 +14,10 @@ import (
 // BenchmarkDecodeSmallTrace benchmarks decoding a small trace (baseline ~10KB)
 func BenchmarkDecodeSmallTrace(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/small_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace map[string]interface{}
 		if err := json.Unmarshal(traceData, &trace); err != nil {
@@ -26,10 +29,10 @@ func BenchmarkDecodeSmallTrace(b *testing.B) {
 // BenchmarkDecodeMediumTrace benchmarks decoding a medium-sized trace (~100KB)
 func BenchmarkDecodeMediumTrace(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/medium_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace map[string]interface{}
 		if err := json.Unmarshal(traceData, &trace); err != nil {
@@ -41,10 +44,10 @@ func BenchmarkDecodeMediumTrace(b *testing.B) {
 // BenchmarkDecodeLargeTrace benchmarks decoding a large trace (~1MB+)
 func BenchmarkDecodeLargeTrace(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/large_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace map[string]interface{}
 		if err := json.Unmarshal(traceData, &trace); err != nil {
@@ -56,10 +59,10 @@ func BenchmarkDecodeLargeTrace(b *testing.B) {
 // BenchmarkDecodeDeeplyNestedTrace benchmarks decoding a trace with deep nesting
 func BenchmarkDecodeDeeplyNestedTrace(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/deeply_nested_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace map[string]interface{}
 		if err := json.Unmarshal(traceData, &trace); err != nil {
@@ -71,10 +74,10 @@ func BenchmarkDecodeDeeplyNestedTrace(b *testing.B) {
 // BenchmarkDecodeParallel benchmarks parallel decoding of large traces
 func BenchmarkDecodeParallel(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/large_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			var trace map[string]interface{}
@@ -88,21 +91,21 @@ func BenchmarkDecodeParallel(b *testing.B) {
 // BenchmarkDecodeWithMemoryProfile benchmarks with memory profiling
 func BenchmarkDecodeWithMemoryProfile(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/large_trace.json")
-	
+
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	startAlloc := m.Alloc
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace map[string]interface{}
 		if err := json.Unmarshal(traceData, &trace); err != nil {
 			b.Fatalf("Failed to decode trace: %v", err)
 		}
 	}
-	
+
 	b.StopTimer()
 	runtime.ReadMemStats(&m)
 	b.ReportMetric(float64(m.Alloc-startAlloc)/float64(b.N), "B/decode")
@@ -111,10 +114,10 @@ func BenchmarkDecodeWithMemoryProfile(b *testing.B) {
 // BenchmarkDecodeStreamingParser benchmarks using a streaming JSON parser
 func BenchmarkDecodeStreamingParser(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/large_trace.json")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		decoder := json.NewDecoder(bytes.NewReader(traceData))
 		var trace map[string]interface{}
@@ -127,17 +130,17 @@ func BenchmarkDecodeStreamingParser(b *testing.B) {
 // BenchmarkDecodeWithStructuredOutput benchmarks decoding to a structured type
 func BenchmarkDecodeWithStructuredOutput(b *testing.B) {
 	traceData := loadTestTrace(b, "testdata/large_trace.json")
-	
+
 	type TransactionTrace struct {
 		Hash         string                   `json:"hash"`
 		Events       []map[string]interface{} `json:"events"`
 		Diagnostics  []map[string]interface{} `json:"diagnostics"`
 		LedgerNumber int64                    `json:"ledger_number"`
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	for i := 0; i < b.N; i++ {
 		var trace TransactionTrace
 		if err := json.Unmarshal(traceData, &trace); err != nil {
