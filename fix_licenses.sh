@@ -41,6 +41,7 @@ FILES=(
 "internal/updater/checker_integration_test.go"
 "internal/testgen/generator.go"
 "internal/testgen/templates.go"
+"internal/simulator/time_travel_test.go"
 "internal/simulator/profiling_test.go"
 "internal/simulator/interface_test.go"
 "main.go"
