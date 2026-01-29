@@ -1,10 +1,13 @@
+// Copyright 2025 Erst Users
+// SPDX-License-Identifier: Apache-2.0
+
 package rpc
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/logger"
 	"github.com/stellar/go/clients/horizonclient"
 )
@@ -74,13 +77,6 @@ func NewClientWithURL(url string, net Network) *Client {
 	}
 }
 
-// TransactionResponse contains the raw XDR fields needed for simulation
-type TransactionResponse struct {
-	EnvelopeXdr   string
-	ResultXdr     string
-	ResultMetaXdr string
-}
-
 // GetTransaction fetches the transaction details and full XDR data
 func (c *Client) GetTransaction(ctx context.Context, hash string) (*TransactionResponse, error) {
 	logger.Logger.Debug("Fetching transaction details", "hash", hash)
@@ -88,14 +84,10 @@ func (c *Client) GetTransaction(ctx context.Context, hash string) (*TransactionR
 	tx, err := c.Horizon.TransactionDetail(hash)
 	if err != nil {
 		logger.Logger.Error("Failed to fetch transaction", "hash", hash, "error", err)
-		return nil, fmt.Errorf("failed to fetch transaction: %w", err)
+		return nil, errors.WrapTransactionNotFound(err)
 	}
 
 	logger.Logger.Info("Transaction fetched successfully", "hash", hash, "envelope_size", len(tx.EnvelopeXdr))
 
-	return &TransactionResponse{
-		EnvelopeXdr:   tx.EnvelopeXdr,
-		ResultXdr:     tx.ResultXdr,
-		ResultMetaXdr: tx.ResultMetaXdr,
-	}, nil
+	return parseTransactionResponse(tx), nil
 }
