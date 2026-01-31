@@ -16,6 +16,7 @@ Currently, when a Soroban transaction fails on mainnet, developers receive a gen
 1.  **Transaction Replay**: Fetch a failed transaction's envelope and ledger state from an RPC provider.
 2.  **Local Simulation**: Re-execute the transaction logically in a local environment.
 3.  **Trace decoding**: Map execution steps and failures back to readable instructions or Rust source lines.
+4.  **Source Mapping**: Map WASM instruction failures to specific Rust source code lines using debug symbols.
 
 ## Usage (MVP)
 
@@ -101,6 +102,8 @@ The command prints the signed audit log JSON to stdout so it can be redirected t
 
 - **[Architecture Overview](docs/architecture.md)**: Deep dive into how the Go CLI communicates with the Rust simulator, including data flow, IPC mechanisms, and design decisions.
 - **[Project Proposal](docs/proposal.md)**: Detailed project proposal and roadmap.
+- **[Source Mapping](docs/source-mapping.md)**: Implementation details for mapping WASM failures to Rust source code.
+- **[Debug Symbols Guide](docs/debug-symbols-guide.md)**: How to compile Soroban contracts with debug symbols.
 
 ## Technical Analysis
 

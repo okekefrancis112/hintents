@@ -15,6 +15,7 @@ import (
 
 var (
 	// Build information populated by ldflags
+	Version   = "dev"
 	CommitSHA = "unknown"
 	BuildDate = "unknown"
 )
@@ -83,6 +84,8 @@ func getVersionInfo() VersionInfo {
 }
 
 func init() {
+	rootCmd.AddCommand(versionCmd)
+	versionCmd.Flags().Bool("json", false, "Output version information in JSON format")
 	versionCmd.Flags().Bool("json", false, "Output version information in JSON format")
 	rootCmd.AddCommand(versionCmd)
 }
