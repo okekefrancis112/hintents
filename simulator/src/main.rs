@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::{self, Read};
 use std::panic;
 
-use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, OptimizationReport};
+use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, OptimizationReport, CPU_LIMIT, MEMORY_LIMIT};
 use soroban_env_host::events::Events;
 
 // -----------------------------------------------------------------------------
@@ -52,6 +52,10 @@ struct BudgetUsage {
     cpu_instructions: u64,
     memory_bytes: u64,
     operations_count: usize,
+    cpu_limit: u64,
+    memory_limit: u64,
+    cpu_usage_percent: f64,
+    memory_usage_percent: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,10 +207,17 @@ fn main() {
     let cpu_insns = budget.get_cpu_insns_consumed().unwrap_or(0);
     let mem_bytes = budget.get_mem_bytes_consumed().unwrap_or(0);
 
+    let cpu_usage_percent = (cpu_insns as f64 / CPU_LIMIT as f64) * 100.0;
+    let memory_usage_percent = (mem_bytes as f64 / MEMORY_LIMIT as f64) * 100.0;
+
     let budget_usage = BudgetUsage {
         cpu_instructions: cpu_insns,
         memory_bytes: mem_bytes,
         operations_count: operations.as_slice().len(),
+        cpu_limit: CPU_LIMIT,
+        memory_limit: MEMORY_LIMIT,
+        cpu_usage_percent,
+        memory_usage_percent,
     };
 
     let optimization_report = if request.enable_optimization_advisor {
