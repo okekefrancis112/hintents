@@ -113,8 +113,8 @@ jobs:
     needs: license-headers
     strategy:
       matrix:
-        # Use stable and 1.78 - dependencies are patched to work with stable Rust
-        rust-version: [stable, "1.78"]
+        # Rust 1.86+ supports edition 2024 (required by base64ct 1.8.x and ruzstd 0.8.x)
+        rust-version: [stable, "1.86"]
     defaults:
       run:
         working-directory: simulator

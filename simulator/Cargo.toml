@@ -14,10 +14,3 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 inferno = "0.11"
 jsonschema = "0.40.2"
 object = "0.38.1"
-
-# Pin crates to older versions compatible with stable Rust
-[patch.crates-io]
-# Use crates.io versions that don't require edition 2024
-base64ct = "=1.5.5"
-# Use older ruzstd that doesn't require resolver 3
-ruzstd = "=0.6.2"
