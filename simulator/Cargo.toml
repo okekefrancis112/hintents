@@ -15,7 +15,9 @@ inferno = "0.11"
 jsonschema = "0.40.2"
 object = "0.38.1"
 
-# Pin crates that require edition 2024 to older versions compatible with stable Rust
+# Pin crates to older versions compatible with stable Rust
 [patch.crates-io]
-base64ct = { git = "https://github.com/RustCrypto/formats", tag = "base64ct-v1.6.0", package = "base64ct" }
-ruzstd = { git = "https://github.com/KillingSpark/zstd-rs", tag = "v0.7.0" }
+# Use crates.io versions that don't require edition 2024
+base64ct = "=1.5.5"
+# Use older ruzstd that doesn't require resolver 3
+ruzstd = "=0.6.2"
