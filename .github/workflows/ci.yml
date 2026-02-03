@@ -113,8 +113,8 @@ jobs:
     needs: license-headers
     strategy:
       matrix:
-        # Minimum Rust 1.84 required for resolver 3 support (used by ruzstd dependency)
-        rust-version: [stable, "1.84"]
+        # Use stable and 1.78 - dependencies are patched to work with stable Rust
+        rust-version: [stable, "1.78"]
     defaults:
       run:
         working-directory: simulator

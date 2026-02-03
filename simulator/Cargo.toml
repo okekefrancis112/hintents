@@ -2,8 +2,6 @@
 name = "simulator"
 version = "0.1.0"
 edition = "2021"
-# Minimum Rust version required for resolver 3 support (used by ruzstd dependency)
-rust-version = "1.84"
 
 [dependencies]
 soroban-env-host = "25.0.1" # Updated to latest version
@@ -16,3 +14,8 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 inferno = "0.11"
 jsonschema = "0.40.2"
 object = "0.38.1"
+
+# Pin crates that require edition 2024 to older versions compatible with stable Rust
+[patch.crates-io]
+base64ct = { git = "https://github.com/RustCrypto/formats", tag = "base64ct-v1.6.0", package = "base64ct" }
+ruzstd = { git = "https://github.com/KillingSpark/zstd-rs", tag = "v0.7.0" }
