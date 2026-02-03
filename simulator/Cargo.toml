@@ -2,6 +2,8 @@
 name = "simulator"
 version = "0.1.0"
 edition = "2021"
+# Minimum Rust version required for resolver 3 support (used by ruzstd dependency)
+rust-version = "1.84"
 
 [dependencies]
 soroban-env-host = "25.0.1" # Updated to latest version
