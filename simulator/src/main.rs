@@ -219,7 +219,7 @@ fn main() {
     };
 
     // Initialize source mapper if WASM is provided
-let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
+    let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
         match base64::engine::general_purpose::STANDARD.decode(wasm_base64) {
             Ok(wasm_bytes) => {
                 let mapper = SourceMapper::new(wasm_bytes);
@@ -397,16 +397,16 @@ let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
                 Err(_) => vec![],
             };
 
-let mut final_logs = vec![
-        format!("Host Initialized with Budget: {:?}", budget),
-        format!("Loaded {} Ledger Entries", loaded_entries_count),
-        format!("Captured {} diagnostic events", diagnostic_events.len()),
-        format!("CPU Instructions Used: {}", cpu_insns),
-        format!("Memory Bytes Used: {}", mem_bytes),
-    ];
-    for log in exec_logs {
-        final_logs.push(log.to_string());
-    }
+            let mut final_logs = vec![
+                format!("Host Initialized with Budget: {:?}", budget),
+                format!("Loaded {} Ledger Entries", loaded_entries_count),
+                format!("Captured {} diagnostic events", diagnostic_events.len()),
+                format!("CPU Instructions Used: {}", cpu_insns),
+                format!("Memory Bytes Used: {}", mem_bytes),
+            ];
+            for log in exec_logs {
+                final_logs.push(log.to_string());
+            }
 
             let response = SimulationResponse {
                 status: "success".to_string(),
