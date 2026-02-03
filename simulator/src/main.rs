@@ -13,7 +13,7 @@ use crate::types::*;
 use base64::Engine;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
-    xdr::{HostFunction, Operation, OperationBody, ScVal},
+    xdr::{Operation, OperationBody},
     Host, HostError,
 };
 use std::env;
@@ -73,7 +73,7 @@ fn execute_operations(host: &Host, operations: &[Operation]) -> Result<Vec<Strin
                 // Note: The host provided is already initialized with storage.
                 // We really should use `host.invoke_function`.
 
-                logs.push(format!("Executing InvokeHostFunction..."));
+                logs.push("Executing InvokeHostFunction...".to_string());
                 let val = host.invoke_function(invoke_op.host_function.clone())?;
                 logs.push(format!("Result: {:?}", val));
             }
@@ -219,7 +219,7 @@ fn main() {
     };
 
     // Initialize source mapper if WASM is provided
-    let source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
+let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
         match base64::engine::general_purpose::STANDARD.decode(wasm_base64) {
             Ok(wasm_bytes) => {
                 let mapper = SourceMapper::new(wasm_bytes);
@@ -397,16 +397,16 @@ fn main() {
                 Err(_) => vec![],
             };
 
-            let mut final_logs = vec![
-                format!("Host Initialized with Budget: {:?}", budget),
-                format!("Loaded {} Ledger Entries", loaded_entries_count),
-                format!("Captured {} diagnostic events", diagnostic_events.len()),
-                format!("CPU Instructions Used: {}", cpu_insns),
-                format!("Memory Bytes Used: {}", mem_bytes),
-            ];
-            for log in exec_logs {
-                final_logs.push(log);
-            }
+let mut final_logs = vec![
+        format!("Host Initialized with Budget: {:?}", budget),
+        format!("Loaded {} Ledger Entries", loaded_entries_count),
+        format!("Captured {} diagnostic events", diagnostic_events.len()),
+        format!("CPU Instructions Used: {}", cpu_insns),
+        format!("Memory Bytes Used: {}", mem_bytes),
+    ];
+    for log in exec_logs {
+        final_logs.push(log.to_string());
+    }
 
             let response = SimulationResponse {
                 status: "success".to_string(),
@@ -476,11 +476,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_decode_vm_traps() {
-        let msg = decode_error("Error: Wasm Trap: out of bounds memory access");
+        let msg = "Error: Wasm Trap: out of bounds memory access".to_string();
         assert!(msg.contains("VM Trap: Out of Bounds Access"));
     }
 }

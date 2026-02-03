@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SimulationRequest {
     pub envelope_xdr: String,
     pub result_meta_xdr: String,
@@ -13,6 +14,7 @@ pub struct SimulationRequest {
     pub contract_wasm: Option<String>,
     pub enable_optimization_advisor: bool,
     pub profile: Option<bool>,
+    #[allow(dead_code)]
     pub timestamp: String,
 }
 
