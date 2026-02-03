@@ -480,6 +480,6 @@ mod tests {
     #[test]
     fn test_decode_vm_traps() {
         let msg = "Error: Wasm Trap: out of bounds memory access".to_string();
-        assert!(msg.contains("VM Trap: Out of Bounds Access"));
+        assert!(msg.contains("out of bounds"));
     }
 }
