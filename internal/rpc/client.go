@@ -506,6 +506,8 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 		targetURL = TestnetSorobanURL
 	} else if c.Network == Mainnet && targetURL == "" {
 		targetURL = MainnetSorobanURL
+	} else if c.Network == Futurenet && targetURL == "" {
+		targetURL = FuturenetSorobanURL
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewBuffer(bodyBytes))
