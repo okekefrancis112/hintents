@@ -119,6 +119,7 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
+	registerCacheFlushHook()
 
 	fmt.Printf("Debugging transaction: %s\n", txHash)
 	fmt.Printf("Network: %s\n", networkFlag)
@@ -228,7 +229,7 @@ Local WASM Replay Mode:
 
 		// Local WASM replay mode
 		if wasmPath != "" {
-			return runLocalWasmReplay()
+			return runLocalWasmReplay(cmd.Context())
 		}
 
 		// Network transaction replay mode
@@ -276,6 +277,7 @@ Local WASM Replay Mode:
 		if err != nil {
 			return fmt.Errorf("failed to create client: %w", err)
 		}
+		registerCacheFlushHook()
 
 		if horizonURL == "" {
 			// Extract horizon URL from valid client if not explicitly set
@@ -313,6 +315,10 @@ Local WASM Replay Mode:
 			}, nil)
 
 			if err != nil {
+				if IsCancellation(err) {
+					spinner.StopWithMessage("Interrupted. Stopping watch...")
+					return err
+				}
 				spinner.StopWithError("Failed to poll for transaction")
 				return fmt.Errorf("watch mode error: %w", err)
 			}
@@ -344,6 +350,8 @@ Local WASM Replay Mode:
 		if err != nil {
 			return fmt.Errorf("failed to initialize simulator: %w", err)
 		}
+		registerRunnerCloseHook("debug-simulator-runner", runner)
+		defer func() { _ = runner.Close() }()
 
 		// Determine timestamps to simulate
 		timestamps := []int64{TimestampFlag}
@@ -396,7 +404,7 @@ Local WASM Replay Mode:
 					Timestamp:     ts,
 				}
 
-				simResp, err = runner.Run(simReq)
+				simResp, err = runner.Run(ctx, simReq)
 				if err != nil {
 					return fmt.Errorf("simulation failed: %w", err)
 				}
@@ -420,7 +428,7 @@ Local WASM Replay Mode:
 							return
 						}
 					}
-					primaryResult, primaryErr = runner.Run(&simulator.SimulationRequest{
+					primaryResult, primaryErr = runner.Run(ctx, &simulator.SimulationRequest{
 						EnvelopeXdr:   resp.EnvelopeXdr,
 						ResultMetaXdr: resp.ResultMetaXdr,
 						LedgerEntries: entries,
@@ -458,7 +466,7 @@ Local WASM Replay Mode:
 						}
 					}
 
-					compareResult, compareErr = runner.Run(&simulator.SimulationRequest{
+					compareResult, compareErr = runner.Run(ctx, &simulator.SimulationRequest{
 						EnvelopeXdr:   resp.EnvelopeXdr,
 						ResultMetaXdr: compareResp.ResultMetaXdr,
 						LedgerEntries: entries,
@@ -596,7 +604,7 @@ func runDemoMode(cmdArgs []string) error {
 	return nil
 }
 
-func runLocalWasmReplay() error {
+func runLocalWasmReplay(ctx context.Context) error {
 	fmt.Printf("%s  WARNING: Using Mock State (not mainnet data)\n", visualizer.Warning())
 	fmt.Println()
 
@@ -615,6 +623,8 @@ func runLocalWasmReplay() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize simulator: %w", err)
 	}
+	registerRunnerCloseHook("local-wasm-simulator-runner", runner)
+	defer func() { _ = runner.Close() }()
 
 	// Create simulation request with local WASM
 	req := &simulator.SimulationRequest{
@@ -627,7 +637,7 @@ func runLocalWasmReplay() error {
 
 	// Run simulation
 	fmt.Printf("%s Executing contract locally...\n", visualizer.Symbol("play"))
-	resp, err := runner.Run(req)
+	resp, err := runner.Run(ctx, req)
 	if err != nil {
 		fmt.Printf("%s Execution failed: %v\n", visualizer.Error(), err)
 		return err

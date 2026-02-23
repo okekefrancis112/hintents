@@ -4,6 +4,7 @@
 package rpc
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -182,4 +183,11 @@ func Cleanup(maxAge time.Duration) (int, error) {
 	}
 
 	return removedCount, nil
+}
+
+// Flush finalizes pending cache writes.
+// Current cache writes are synchronous file writes, so this is a no-op.
+func Flush(ctx context.Context) error {
+	_ = ctx
+	return nil
 }
