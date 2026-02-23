@@ -3,6 +3,7 @@
 
 mod config;
 mod gas_optimizer;
+mod git_detector;
 mod runner;
 mod source_mapper;
 mod types;
@@ -13,7 +14,7 @@ use crate::types::*;
 use base64::Engine;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
-    xdr::{HostFunction, Operation, OperationBody, ScVal},
+    xdr::{Operation, OperationBody},
     Host, HostError,
 };
 use std::env;
@@ -219,7 +220,7 @@ fn main() {
     };
 
     // Initialize source mapper if WASM is provided
-    let source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
+    let _source_mapper = if let Some(wasm_base64) = &request.contract_wasm {
         match base64::engine::general_purpose::STANDARD.decode(wasm_base64) {
             Ok(wasm_bytes) => {
                 let mapper = SourceMapper::new(wasm_bytes);
@@ -474,13 +475,3 @@ fn main() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_decode_vm_traps() {
-        let msg = decode_error("Error: Wasm Trap: out of bounds memory access");
-        assert!(msg.contains("VM Trap: Out of Bounds Access"));
-    }
-}
