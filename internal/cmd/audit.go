@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/dotandev/hintents/internal/secutil"
 )
 
 // AuditLog represents the signed audit trail of a transaction simulation
@@ -56,6 +58,10 @@ func Generate(txHash string, envelopeXdr, resultMetaXdr string, events, logs []s
 	if err != nil {
 		return nil, fmt.Errorf("invalid private key hex: %w", err)
 	}
+	// Zero the decoded key bytes on return, covering all exit paths including
+	// the early return below. The hex-encoded string (privateKeyHex) is not
+	// cleared here because Go strings are immutable.
+	defer secutil.Memzero(privKeyBytes)
 
 	if len(privKeyBytes) != ed25519.PrivateKeySize && len(privKeyBytes) != ed25519.SeedSize {
 		return nil, fmt.Errorf("invalid private key length: %d", len(privKeyBytes))
@@ -63,10 +69,13 @@ func Generate(txHash string, envelopeXdr, resultMetaXdr string, events, logs []s
 
 	var privateKey ed25519.PrivateKey
 	if len(privKeyBytes) == ed25519.SeedSize {
+		// NewKeyFromSeed allocates a new 64-byte backing array; zero it separately.
 		privateKey = ed25519.NewKeyFromSeed(privKeyBytes)
 	} else {
 		privateKey = ed25519.PrivateKey(privKeyBytes)
 	}
+	// Closure captures privateKey by reference so it reads the assigned value at exit.
+	defer func() { secutil.Memzero(privateKey) }()
 
 	// 5. Sign the Trace Hash
 	// We sign the hash of the payload to ensure integrity.
