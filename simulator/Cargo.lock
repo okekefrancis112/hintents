@@ -706,6 +706,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b90ca2580b73ab6a1f724b76ca11ab632df820fd6040c336200d2c1df7b3c82c"
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
 name = "fancy-regex"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -876,6 +882,17 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "gimli"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+dependencies = [
+ "fallible-iterator",
+ "indexmap",
+ "stable_deref_trait",
 ]
 
 [[package]]
@@ -1540,6 +1557,7 @@ dependencies = [
  "flate2",
  "memchr",
  "ruzstd",
+ "wasmparser 0.243.0",
 ]
 
 [[package]]
@@ -2128,6 +2146,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
  "clap",
+ "gimli",
  "inferno",
  "jsonschema",
  "object",
@@ -2186,7 +2205,7 @@ dependencies = [
  "soroban-wasmi",
  "static_assertions",
  "stellar-xdr",
- "wasmparser",
+ "wasmparser 0.116.1",
 ]
 
 [[package]]
@@ -2223,7 +2242,7 @@ dependencies = [
  "soroban-wasmi",
  "static_assertions",
  "stellar-strkey",
- "wasmparser",
+ "wasmparser 0.116.1",
 ]
 
 [[package]]
@@ -2770,6 +2789,15 @@ checksum = "a58e28b80dd8340cb07b8242ae654756161f6fc8d0038123d679b7b99964fa50"
 dependencies = [
  "indexmap",
  "semver",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.243.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6d8db401b0528ec316dfbe579e6ab4152d61739cfe076706d2009127970159d"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
