@@ -13,7 +13,7 @@ use crate::types::*;
 use base64::Engine;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
-    xdr::{HostFunction, Operation, OperationBody, ScVal},
+    xdr::{Operation, OperationBody},
     Host, HostError,
 };
 use std::env;
@@ -73,7 +73,7 @@ fn execute_operations(host: &Host, operations: &[Operation]) -> Result<Vec<Strin
                 // Note: The host provided is already initialized with storage.
                 // We really should use `host.invoke_function`.
 
-                logs.push(format!("Executing InvokeHostFunction..."));
+                logs.push("Executing InvokeHostFunction...".to_string());
                 let val = host.invoke_function(invoke_op.host_function.clone())?;
                 logs.push(format!("Result: {:?}", val));
             }
@@ -179,6 +179,8 @@ fn main() {
             return;
         }
     };
+
+    tracing::debug!(timestamp = %request.timestamp, "Processing simulation request");
 
     // Decode Envelope XDR
     let envelope = match base64::engine::general_purpose::STANDARD.decode(&request.envelope_xdr) {
@@ -424,7 +426,14 @@ fn main() {
             println!("{}", serde_json::to_string(&response).unwrap());
         }
         Ok(Err(host_error)) => {
-            // Host error during execution (e.g., contract trap, validation failure)
+            // Host error during execution (e.g., contract trap, validation failure).
+            // Attempt source mapping at instruction offset 0; a full implementation
+            // would extract the faulting WASM instruction pointer from the HostError.
+            let source_location = source_mapper
+                .as_ref()
+                .and_then(|m| m.map_wasm_offset_to_source(0))
+                .map(|loc| serde_json::to_string(&loc).unwrap_or_default());
+
             let structured_error = StructuredError {
                 error_type: "HostError".to_string(),
                 message: format!("{:?}", host_error),
@@ -444,7 +453,7 @@ fn main() {
                 flamegraph: None,
                 optimization_report: None,
                 budget_usage: None,
-                source_location: None,
+                source_location,
             };
             println!("{}", serde_json::to_string(&response).unwrap());
         }
@@ -457,6 +466,13 @@ fn main() {
                 "Unknown panic".to_string()
             };
 
+            // Attempt source mapping; a full implementation would parse the panic
+            // message for a WASM instruction offset.
+            let source_location = source_mapper
+                .as_ref()
+                .and_then(|m| m.map_wasm_offset_to_source(0))
+                .map(|loc| serde_json::to_string(&loc).unwrap_or_default());
+
             let response = SimulationResponse {
                 status: "error".to_string(),
                 error: Some(format!("Simulator panicked: {}", panic_msg)),
@@ -467,11 +483,25 @@ fn main() {
                 flamegraph: None,
                 optimization_report: None,
                 budget_usage: None,
-                source_location: None,
+                source_location,
             };
             println!("{}", serde_json::to_string(&response).unwrap());
         }
     }
+}
+
+#[cfg(test)]
+fn decode_error(msg: &str) -> String {
+    if msg.contains("out of bounds memory access") {
+        return "VM Trap: Out of Bounds Access".to_string();
+    }
+    if msg.contains("integer overflow") {
+        return "VM Trap: Integer Overflow".to_string();
+    }
+    if msg.contains("unreachable") {
+        return "VM Trap: Unreachable Instruction".to_string();
+    }
+    msg.to_string()
 }
 
 #[cfg(test)]
