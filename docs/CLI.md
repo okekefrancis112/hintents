@@ -29,7 +29,7 @@ Debug a failed Soroban transaction. Fetches a transaction envelope from the Stel
 ### Usage
 
 ```bash
-erst debug <transaction-hash> [flags]
+erst debug [transaction-hash] [flags]
 ```
 
 ### Examples
@@ -37,6 +37,7 @@ erst debug <transaction-hash> [flags]
 ```bash
 erst debug 5c0a1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
 erst debug --network testnet <tx-hash>
+erst debug < tx.xdr
 ```
 
 ### Options
@@ -51,7 +52,7 @@ erst debug --network testnet <tx-hash>
 
 | Argument | Description |
 | :--- | :--- |
-| `<transaction-hash>` | The hash of the transaction to debug. |
+| `<transaction-hash>` | Optional transaction hash (required unless envelope XDR is piped via stdin). |
 
 ---
 

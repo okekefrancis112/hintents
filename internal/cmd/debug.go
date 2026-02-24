@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -145,7 +146,7 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 }
 
 var debugCmd = &cobra.Command{
-	Use:   "debug <transaction-hash>",
+	Use:   "debug [transaction-hash]",
 	Short: "Debug a failed Soroban transaction",
 	Long: `Fetch and simulate a Soroban transaction to debug failures and analyze execution.
 
@@ -179,7 +180,10 @@ Local WASM Replay Mode:
   erst debug --wasm ./contract.wasm --args "arg1" --args "arg2"
 
   # Demo mode (test color output, no network required)
-  erst debug --demo`,
+  erst debug --demo
+
+  # Debug a base64 envelope XDR via stdin (offline, no RPC calls)
+  erst debug < tx.xdr`,
 	Args: cobra.MaximumNArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		// Demo mode or local WASM replay don't need transaction hash
@@ -187,12 +191,27 @@ Local WASM Replay Mode:
 			return nil
 		}
 
-		if len(args) == 0 {
-			return fmt.Errorf("transaction hash is required when not using --wasm or --demo flag")
+		stdinPiped, err := isStdinPiped()
+		if err != nil {
+			return fmt.Errorf("failed to inspect stdin: %w", err)
 		}
 
-		if err := rpc.ValidateTransactionHash(args[0]); err != nil {
-			return fmt.Errorf("error: invalid transaction hash format: %w", err)
+		if len(args) == 0 {
+			if !stdinPiped {
+				return fmt.Errorf("transaction hash is required when not using --wasm or --demo flag")
+			}
+			if compareNetworkFlag != "" {
+				return fmt.Errorf("--compare-network requires a transaction hash and cannot be used with stdin envelope mode")
+			}
+			if watchFlag {
+				return fmt.Errorf("--watch requires a transaction hash and cannot be used with stdin envelope mode")
+			}
+		}
+
+		if len(args) > 0 {
+			if err := rpc.ValidateTransactionHash(args[0]); err != nil {
+				return fmt.Errorf("error: invalid transaction hash format: %w", err)
+			}
 		}
 
 		// Validate network flag
@@ -233,7 +252,12 @@ Local WASM Replay Mode:
 
 		// Network transaction replay mode
 		ctx := cmd.Context()
-		txHash := cmdArgs[0]
+		offlineEnvelopeMode := len(cmdArgs) == 0
+		txHash := "stdin-envelope"
+		if !offlineEnvelopeMode {
+			txHash = cmdArgs[0]
+		}
+		var err error
 
 		// Initialize OpenTelemetry if enabled
 		if tracingEnabled {
@@ -258,85 +282,106 @@ Local WASM Replay Mode:
 		defer span.End()
 
 		var horizonURL string
-		opts := []rpc.ClientOption{
-			rpc.WithNetwork(rpc.Network(networkFlag)),
-			rpc.WithToken(rpcTokenFlag),
-		}
+		var resp *rpc.TransactionResponse
+		var client *rpc.Client
 
-		if rpcURLFlag != "" {
-			urls := strings.Split(rpcURLFlag, ",")
-			for i := range urls {
-				urls[i] = strings.TrimSpace(urls[i])
-			}
-			opts = append(opts, rpc.WithAltURLs(urls))
-			horizonURL = urls[0]
-		}
-
-		client, err := rpc.NewClient(opts...)
-		if err != nil {
-			return fmt.Errorf("failed to create client: %w", err)
-		}
-
-		if horizonURL == "" {
-			// Extract horizon URL from valid client if not explicitly set
-			horizonURL = client.HorizonURL
-		}
-
-		if noCacheFlag {
-			client.CacheEnabled = false
-			fmt.Println("🚫 Cache disabled by --no-cache flag")
-		}
-
-		fmt.Printf("Debugging transaction: %s\n", txHash)
-		fmt.Printf("Primary Network: %s\n", networkFlag)
-		if compareNetworkFlag != "" {
-			fmt.Printf("Comparing against Network: %s\n", compareNetworkFlag)
-		}
-
-		// Fetch transaction details
-		if watchFlag {
-			spinner := watch.NewSpinner()
-			poller := watch.NewPoller(watch.PollerConfig{
-				InitialInterval: 1 * time.Second,
-				MaxInterval:     10 * time.Second,
-				TimeoutDuration: time.Duration(watchTimeoutFlag) * time.Second,
-			})
-
-			spinner.Start("Waiting for transaction to appear on-chain...")
-
-			result, err := poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
-				_, pollErr := client.GetTransaction(pollCtx, txHash)
-				if pollErr != nil {
-					return nil, pollErr
-				}
-				return true, nil
-			}, nil)
-
+		if offlineEnvelopeMode {
+			envelopeXdr, err := readEnvelopeXDRFromStdin()
 			if err != nil {
-				spinner.StopWithError("Failed to poll for transaction")
-				return fmt.Errorf("watch mode error: %w", err)
+				return err
 			}
 
-			if !result.Found {
-				spinner.StopWithError("Transaction not found within timeout")
-				return fmt.Errorf("transaction %s not found after %d seconds", txHash, watchTimeoutFlag)
+			resp = &rpc.TransactionResponse{
+				EnvelopeXdr: envelopeXdr,
 			}
 
-			spinner.StopWithMessage("Transaction found! Starting debug...")
-		}
+			fmt.Println("Debugging transaction envelope from stdin (offline mode)")
+			fmt.Printf("Primary Network: %s\n", networkFlag)
+			fmt.Printf("Envelope loaded successfully. Size: %d bytes\n", len(resp.EnvelopeXdr))
+		} else {
+			opts := []rpc.ClientOption{
+				rpc.WithNetwork(rpc.Network(networkFlag)),
+				rpc.WithToken(rpcTokenFlag),
+			}
 
-		fmt.Printf("Fetching transaction: %s\n", txHash)
-		resp, err := client.GetTransaction(ctx, txHash)
-		if err != nil {
-			return fmt.Errorf(localization.Get("error.fetch_transaction"), err)
-		}
+			if rpcURLFlag != "" {
+				urls := strings.Split(rpcURLFlag, ",")
+				for i := range urls {
+					urls[i] = strings.TrimSpace(urls[i])
+				}
+				opts = append(opts, rpc.WithAltURLs(urls))
+				horizonURL = urls[0]
+			}
 
-		fmt.Printf("Transaction fetched successfully. Envelope size: %d bytes\n", len(resp.EnvelopeXdr))
+			client, err = rpc.NewClient(opts...)
+			if err != nil {
+				return fmt.Errorf("failed to create client: %w", err)
+			}
+
+			if horizonURL == "" {
+				// Extract horizon URL from valid client if not explicitly set
+				horizonURL = client.HorizonURL
+			}
+
+			if noCacheFlag {
+				client.CacheEnabled = false
+				fmt.Println("Cache disabled by --no-cache flag")
+			}
+
+			fmt.Printf("Debugging transaction: %s\n", txHash)
+			fmt.Printf("Primary Network: %s\n", networkFlag)
+			if compareNetworkFlag != "" {
+				fmt.Printf("Comparing against Network: %s\n", compareNetworkFlag)
+			}
+
+			// Fetch transaction details
+			if watchFlag {
+				spinner := watch.NewSpinner()
+				poller := watch.NewPoller(watch.PollerConfig{
+					InitialInterval: 1 * time.Second,
+					MaxInterval:     10 * time.Second,
+					TimeoutDuration: time.Duration(watchTimeoutFlag) * time.Second,
+				})
+
+				spinner.Start("Waiting for transaction to appear on-chain...")
+
+				result, err := poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
+					_, pollErr := client.GetTransaction(pollCtx, txHash)
+					if pollErr != nil {
+						return nil, pollErr
+					}
+					return true, nil
+				}, nil)
+
+				if err != nil {
+					spinner.StopWithError("Failed to poll for transaction")
+					return fmt.Errorf("watch mode error: %w", err)
+				}
+
+				if !result.Found {
+					spinner.StopWithError("Transaction not found within timeout")
+					return fmt.Errorf("transaction %s not found after %d seconds", txHash, watchTimeoutFlag)
+				}
+
+				spinner.StopWithMessage("Transaction found! Starting debug...")
+			}
+
+			fmt.Printf("Fetching transaction: %s\n", txHash)
+			resp, err = client.GetTransaction(ctx, txHash)
+			if err != nil {
+				return fmt.Errorf(localization.Get("error.fetch_transaction"), err)
+			}
+
+			fmt.Printf("Transaction fetched successfully. Envelope size: %d bytes\n", len(resp.EnvelopeXdr))
+		}
 
 		// Extract ledger keys for replay
-		keys, err := extractLedgerKeys(resp.ResultMetaXdr)
-		if err != nil {
-			return fmt.Errorf("failed to extract ledger keys: %w", err)
+		var keys []string
+		if resp.ResultMetaXdr != "" {
+			keys, err = extractLedgerKeys(resp.ResultMetaXdr)
+			if err != nil {
+				return fmt.Errorf("failed to extract ledger keys: %w", err)
+			}
 		}
 
 		// Initialize Simulator Runner
@@ -374,6 +419,9 @@ Local WASM Replay Mode:
 					}
 					ledgerEntries = snap.ToMap()
 					fmt.Printf("Loaded %d ledger entries from snapshot\n", len(ledgerEntries))
+				} else if offlineEnvelopeMode {
+					ledgerEntries = map[string]string{}
+					fmt.Println("Offline stdin mode: running without RPC ledger state")
 				} else {
 					// Try to extract from metadata first, fall back to fetching
 					ledgerEntries, err = rpc.ExtractLedgerEntriesFromMeta(resp.ResultMetaXdr)
@@ -402,6 +450,10 @@ Local WASM Replay Mode:
 				}
 				printSimulationResult(networkFlag, simResp)
 			} else {
+				if offlineEnvelopeMode {
+					return fmt.Errorf("compare-network is not supported when reading envelope XDR from stdin")
+				}
+
 				// Comparison Run
 				var wg sync.WaitGroup
 				var primaryResult, compareResult *simulator.SimulationResponse
@@ -570,6 +622,36 @@ Local WASM Replay Mode:
 		fmt.Printf("Run 'erst session save' to persist this session.\n")
 		return nil
 	},
+}
+
+func isStdinPiped() (bool, error) {
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return false, err
+	}
+	return (stat.Mode() & os.ModeCharDevice) == 0, nil
+}
+
+func readEnvelopeXDRFromStdin() (string, error) {
+	stdinData, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("failed to read stdin: %w", err)
+	}
+	return parseEnvelopeXDRInput(string(stdinData))
+}
+
+func parseEnvelopeXDRInput(input string) (string, error) {
+	envelopeXdr := strings.TrimSpace(input)
+	if envelopeXdr == "" {
+		return "", fmt.Errorf("stdin is empty: provide a base64 transaction envelope XDR")
+	}
+
+	var envelope xdr.TransactionEnvelope
+	if err := xdr.SafeUnmarshalBase64(envelopeXdr, &envelope); err != nil {
+		return "", fmt.Errorf("stdin does not contain a valid base64 transaction envelope XDR: %w", err)
+	}
+
+	return envelopeXdr, nil
 }
 
 // runDemoMode prints sample output without network/WASM - for testing color detection.
