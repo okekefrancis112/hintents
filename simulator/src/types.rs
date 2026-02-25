@@ -22,6 +22,8 @@ pub struct SimulationRequest {
     #[allow(dead_code)]
     #[serde(default)]
     pub timestamp: String,
+    pub mock_base_fee: Option<u32>,
+    pub mock_gas_price: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -60,6 +62,8 @@ pub struct DiagnosticEvent {
     pub topics: Vec<String>,
     pub data: String,
     pub in_successful_contract_call: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wasm_instruction: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
