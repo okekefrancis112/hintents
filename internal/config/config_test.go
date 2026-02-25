@@ -164,15 +164,17 @@ network = "testnet"`,
 			"TOML with all fields",
 			`rpc_url = "https://custom.com"
 network = "futurenet"
+network_passphrase = "Test SDF Future Network ; October 2022"
 simulator_path = "/path/to/sim"
 log_level = "debug"
 cache_path = "/custom/cache"`,
 			&Config{
-				RpcUrl:        "https://custom.com",
-				Network:       NetworkFuturenet,
-				SimulatorPath: "/path/to/sim",
-				LogLevel:      "debug",
-				CachePath:     "/custom/cache",
+				RpcUrl:            "https://custom.com",
+				Network:           NetworkFuturenet,
+				NetworkPassphrase: "Test SDF Future Network ; October 2022",
+				SimulatorPath:     "/path/to/sim",
+				LogLevel:          "debug",
+				CachePath:         "/custom/cache",
 			},
 		},
 		{
@@ -217,6 +219,10 @@ network = "testnet"`,
 
 			if cfg.Network != tt.want.Network {
 				t.Errorf("Network: expected %s, got %s", tt.want.Network, cfg.Network)
+			}
+
+			if cfg.NetworkPassphrase != tt.want.NetworkPassphrase {
+				t.Errorf("NetworkPassphrase: expected %s, got %s", tt.want.NetworkPassphrase, cfg.NetworkPassphrase)
 			}
 
 			if cfg.SimulatorPath != tt.want.SimulatorPath {
