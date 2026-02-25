@@ -99,6 +99,14 @@ var (
 // Middleware defines a function that wraps an http.RoundTripper
 type Middleware func(http.RoundTripper) http.RoundTripper
 
+// RoundTripperFunc is a helper to implement http.RoundTripper with a function
+type RoundTripperFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper
+func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // Client handles interactions with the Stellar Network
 type Client struct {
 	Horizon         horizonclient.ClientInterface
