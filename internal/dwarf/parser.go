@@ -69,7 +69,6 @@ type Frame struct {
 // Parser handles DWARF debug information extraction
 type Parser struct {
 	data       *dwarf.Data
-	unit       *dwarf.Unit
 	reader     *dwarf.Reader
 	binaryType string // "wasm", "elf", "macho", "pe"
 }
@@ -120,21 +119,11 @@ func NewParser(data []byte) (*Parser, error) {
 
 // parseWASM parses DWARF info from a WASM binary
 func parseWASM(data []byte) (*Parser, error) {
-	// For WASM, we need to look for custom sections starting with ".debug_"
 	sections := parseWASMSections(data)
 
 	var dwarfData *dwarf.Data
 	var err error
-	
-	// Look for .debug_info section; dwarf.New expects the 8 canonical DWARF sections.
-	if infoSection, ok := sections[".debug_info"]; ok {
-		abbrev, _ := sections[".debug_abbrev"]
-		line, _ := sections[".debug_line"]
-		ranges, _ := sections[".debug_ranges"]
-		str, _ := sections[".debug_str"]
-		dwarfData, err = dwarf.New(abbrev, nil, nil, infoSection, line, nil, ranges, str)
 
-	// Extract primary DWARF sections from WASM custom sections
 	infoSec := sections[".debug_info"]
 	lineSec := sections[".debug_line"]
 	strSec := sections[".debug_str"]
@@ -606,11 +595,3 @@ func (p *Parser) BinaryType() string {
 	return p.binaryType
 }
 
-// NewParserFromFile creates a new DWARF parser from a filesystem path.
-func NewParserFromFile(path string) (*Parser, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-	return NewParser(data)
-}
