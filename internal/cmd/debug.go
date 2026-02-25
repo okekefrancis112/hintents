@@ -53,8 +53,11 @@ var (
 	demoMode           bool
 	watchFlag          bool
 	watchTimeoutFlag   int
-	mockBaseFeeFlag    uint32
-	mockGasPriceFlag   uint64
+	mockBaseFeeFlag     uint32
+	mockGasPriceFlag    uint64
+	protocolVersionFlag uint32
+	themeFlag           string
+	mockTimeFlag        int64
 )
 
 // DebugCommand holds dependencies for the debug command
@@ -1113,6 +1116,8 @@ func checkLTOWarning(wasmFilePath string) {
 		}
 		dir = parent
 	}
+}
+
 func displaySourceLocation(loc *simulator.SourceLocation) {
 	fmt.Printf("%s Location: %s:%d:%d\n", visualizer.Symbol("location"), loc.File, loc.Line, loc.Column)
 

@@ -17,8 +17,6 @@ import (
 	"github.com/dotandev/hintents/internal/logger"
 )
 
-const wasmTargetPath = "target/wasm32-unknown-unknown/release"
-
 // Resolver coordinates fetching verified source code from a registry,
 // with optional local caching and auto-discovery of local DWARF symbols.
 type Resolver struct {
@@ -130,6 +128,8 @@ func (r *Resolver) PromptForWasmPath() (string, error) {
 	}
 
 	return strings.TrimSpace(path), nil
+}
+
 // AutoDiscoverLocalSymbols scans the project root for local WASM builds.
 // If a bytecode hash match is found, it merges DWARF debug symbols.
 func (r *Resolver) AutoDiscoverLocalSymbols(projectRoot string, expectedHash string) error {

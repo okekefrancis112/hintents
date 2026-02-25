@@ -69,7 +69,6 @@ type Frame struct {
 // Parser handles DWARF debug information extraction
 type Parser struct {
 	data       *dwarf.Data
-	unit       *dwarf.Unit
 	reader     *dwarf.Reader
 	binaryType string // "wasm", "elf", "macho", "pe"
 }
@@ -133,16 +132,6 @@ func parseWASM(data []byte) (*Parser, error) {
 		ranges, _ := sections[".debug_ranges"]
 		str, _ := sections[".debug_str"]
 		dwarfData, err = dwarf.New(abbrev, nil, nil, infoSection, line, nil, ranges, str)
-
-	// Extract primary DWARF sections from WASM custom sections
-	infoSec := sections[".debug_info"]
-	lineSec := sections[".debug_line"]
-	strSec := sections[".debug_str"]
-	abbrevSec := sections[".debug_abbrev"]
-	rangesSec := sections[".debug_ranges"]
-
-	if infoSec != nil {
-		dwarfData, err = dwarf.New(infoSec, abbrevSec, nil, strSec, lineSec, nil, rangesSec, nil)
 	}
 
 	if dwarfData == nil || err != nil {
@@ -606,11 +595,3 @@ func (p *Parser) BinaryType() string {
 	return p.binaryType
 }
 
-// NewParserFromFile creates a new DWARF parser from a filesystem path.
-func NewParserFromFile(path string) (*Parser, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-	return NewParser(data)
-}
