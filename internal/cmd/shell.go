@@ -6,7 +6,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -76,9 +75,13 @@ func runShell(cmd *cobra.Command, args []string) error {
 	// Initialize RPC client
 	var rpcClient *rpc.Client
 	if shellRPCURLFlag != "" {
-		rpcClient = rpc.NewClientWithURL(shellRPCURLFlag, rpc.Network(shellNetworkFlag))
+		rpcClient = rpc.NewClientWithURLOption(shellRPCURLFlag, rpc.Network(shellNetworkFlag), shellRPCToken)
 	} else {
-		rpcClient = rpc.NewClient(rpc.Network(shellNetworkFlag))
+		var clientErr error
+		rpcClient, clientErr = rpc.NewClient(rpc.WithNetwork(rpc.Network(shellNetworkFlag)))
+		if clientErr != nil {
+			return fmt.Errorf("failed to create RPC client: %w", clientErr)
+		}
 	}
 
 	// Initialize simulator runner
