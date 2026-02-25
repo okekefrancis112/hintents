@@ -15,9 +15,13 @@ type TraceNode struct {
 	Children      []*TraceNode // Child nodes in the execution tree
 	Parent        *TraceNode   // Parent node (nil for root)
 	Expanded      bool         // Whether this node is expanded in the UI
+<<<<<<< HEAD
 	SourceFile    string       // Source file path if available
 	SourceLine    int          // Source line number if available
 	GitHubLink    string       // GitHub link to source if available
+=======
+	SourceRef  *SourceRef   // Optional source mapping from WASM debug info; nil if unknown
+>>>>>>> 55295992c89dd66ada0ec977f8d89e1536378ff6
 	CPUDelta      *uint64      // CPU instructions consumed by this node (nil if not tracked)
 	MemoryDelta   *uint64      // Memory bytes consumed by this node (nil if not tracked)
 }

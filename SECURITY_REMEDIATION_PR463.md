@@ -20,9 +20,7 @@ Hardcoded Ed25519 private key was embedded in test file for software signer vali
 **Before**:
 ```typescript
   test('defaults to software signer when no provider specified', () => {
-    const privateKey = `-----BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIJ+DYvh6SE+1aDOjF7cZHZ1lAbmxBlz6khKHLDwI/Xtr
------END PRIVATE KEY-----`;
+    const privateKey = `[REDACTED - Hardcoded Ed25519 PEM private key was here]`;
 
     const signer = createAuditSigner({ softwarePrivateKeyPem: privateKey });
     expect(signer).toBeDefined();
@@ -58,8 +56,8 @@ MC4CAQAwBQYDK2VwBCIEIJ+DYvh6SE+1aDOjF7cZHZ1lAbmxBlz6khKHLDwI/Xtr
 ### Environment Setup
 For local testing, create `.env.test`:
 ```bash
-TEST_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-TEST_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+TEST_PRIVATE_KEY_PEM="<your-private-key-pem-here>"
+TEST_PUBLIC_KEY_PEM="<your-public-key-pem-here>"
 ```
 
 ## Status
@@ -79,7 +77,7 @@ TEST_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ## Recommendation
 Scan repository history for other potential exposures:
 ```bash
-git log -p --all | grep -i "begin private key"
+git log -p --all | grep -i "begin private"
 ```
 
 OR use GitGuardian CLI:
