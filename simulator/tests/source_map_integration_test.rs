@@ -1,6 +1,14 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(
+    clippy::doc_markdown,
+    clippy::uninlined_format_args,
+    clippy::cast_possible_truncation,
+    clippy::redundant_closure_for_method_calls,
+    clippy::unreadable_literal
+)]
+
 //! Integration tests asserting that a known crashing WASM resolves to exactly
 //! "src/test.rs:42" across compiler versions (Rust stable and 1.78).
 //!

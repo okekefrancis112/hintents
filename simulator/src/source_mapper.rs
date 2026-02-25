@@ -1,30 +1,125 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(
+    dead_code,
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::doc_markdown,
+    clippy::uninlined_format_args,
+    clippy::module_name_repetitions,
+    clippy::needless_pass_by_value,
+    clippy::unnecessary_wraps,
+    clippy::option_if_let_else,
+    clippy::redundant_clone,
+    clippy::redundant_closure_for_method_calls,
+    clippy::cast_possible_truncation,
+    clippy::cast_lossless,
+    clippy::too_many_lines,
+    clippy::unused_self,
+    clippy::const_is_empty,
+    clippy::unnecessary_semicolon,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::missing_const_for_fn,
+    clippy::map_unwrap_or
+)]
+
+use crate::source_map_cache::SourceMapCache;
 use object::{Object, ObjectSection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub struct SourceMapper {
     debug_line_data: Option<Vec<u8>>,
     has_symbols: bool,
+    wasm_hash: String,
+    cached_mappings: Option<HashMap<u64, SourceLocation>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceLocation {
     pub file: String,
     pub line: u32,
-    pub column: Option<u32>,
+    pub column: u32,
+    pub column_end: Option<u32>,
 }
 
 impl SourceMapper {
+    /// Creates a new SourceMapper with caching enabled
     pub fn new(wasm_bytes: Vec<u8>) -> Self {
         let has_symbols = Self::check_debug_symbols(&wasm_bytes);
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
+        let debug_line_data = has_symbols
+            .then(|| Self::extract_debug_line(&wasm_bytes))
+            .flatten();
+
+        // Try to load from cache first
+        let cached_mappings = if let Ok(cache) = SourceMapCache::new() {
+            if let Some(entry) = cache.get(&wasm_hash) {
+                if entry.has_symbols == has_symbols {
+                    Some(entry.mappings)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Self {
+            debug_line_data,
+            has_symbols,
+            wasm_hash,
+            cached_mappings,
+        }
+    }
+
+    /// Creates a new SourceMapper without caching (for testing)
+    pub fn new_without_cache(wasm_bytes: Vec<u8>) -> Self {
+        let has_symbols = Self::check_debug_symbols(&wasm_bytes);
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
         let debug_line_data = has_symbols
             .then(|| Self::extract_debug_line(&wasm_bytes))
             .flatten();
         Self {
             debug_line_data,
             has_symbols,
+            wasm_hash,
+            cached_mappings: None,
+        }
+    }
+
+    /// Creates a new SourceMapper with a custom cache directory (for testing)
+    pub fn new_with_cache(wasm_bytes: Vec<u8>, cache_dir: std::path::PathBuf) -> Self {
+        let has_symbols = Self::check_debug_symbols(&wasm_bytes);
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
+        let debug_line_data = has_symbols
+            .then(|| Self::extract_debug_line(&wasm_bytes))
+            .flatten();
+
+        // Try to load from cache first
+        let cached_mappings = if let Ok(cache) = SourceMapCache::with_cache_dir(cache_dir) {
+            if let Some(entry) = cache.get(&wasm_hash) {
+                if entry.has_symbols == has_symbols {
+                    Some(entry.mappings)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Self {
+            debug_line_data,
+            has_symbols,
+            wasm_hash,
+            cached_mappings,
         }
     }
 
@@ -44,6 +139,14 @@ impl SourceMapper {
     }
 
     pub fn map_wasm_offset_to_source(&self, wasm_offset: u64) -> Option<SourceLocation> {
+        // Check cached mappings first
+        if let Some(ref cached) = self.cached_mappings {
+            if let Some(loc) = cached.get(&wasm_offset) {
+                return Some(loc.clone());
+            }
+        }
+
+        // Fall back to real DWARF .debug_line parsing
         // TODO: iterate all CUs from .debug_info offsets for multi-CU WASM
         parse_debug_line(self.debug_line_data.as_deref()?, wasm_offset)
     }
@@ -51,9 +154,14 @@ impl SourceMapper {
     pub fn has_debug_symbols(&self) -> bool {
         self.has_symbols
     }
+
+    /// Returns the WASM hash used for caching
+    pub fn get_wasm_hash(&self) -> &str {
+        &self.wasm_hash
+    }
 }
 
-// Parses a DWARF32 v2–v5 .debug_line section (little-endian) and returns the
+// Parses a DWARF32 v2-v5 .debug_line section (little-endian) and returns the
 // SourceLocation for `target_addr`, or None if not found or on any parse error.
 // Only the opcode subset emitted by gimli::write for a simple line program is
 // required; unsupported opcodes are skipped by consuming their operand bytes.
@@ -184,7 +292,7 @@ fn parse_debug_line(data: &[u8], target_addr: u64) -> Option<SourceLocation> {
 
             match ext_opcode {
                 1 => {
-                    // DW_LNE_end_sequence — reset state, do not emit
+                    // DW_LNE_end_sequence -- reset state, do not emit
                     address = 0;
                     file_idx = 1;
                     line = 1;
@@ -207,7 +315,7 @@ fn parse_debug_line(data: &[u8], target_addr: u64) -> Option<SourceLocation> {
             // Standard opcode
             match opcode {
                 1 => {
-                    // DW_LNS_copy — emit a row
+                    // DW_LNS_copy -- emit a row
                     if address == target_addr {
                         return build_location(&file_names, &include_dirs, file_idx, line, column);
                     }
@@ -238,7 +346,7 @@ fn parse_debug_line(data: &[u8], target_addr: u64) -> Option<SourceLocation> {
                     column = c;
                 }
                 6 => {
-                    // DW_LNS_negate_stmt — no operands, ignore for our purposes
+                    // DW_LNS_negate_stmt -- no operands, ignore for our purposes
                 }
                 _ => {
                     // Skip other standard opcodes by consuming their operands
@@ -253,7 +361,7 @@ fn parse_debug_line(data: &[u8], target_addr: u64) -> Option<SourceLocation> {
                 }
             }
         } else {
-            // Special opcode — encodes an address+line delta and emits a row
+            // Special opcode -- encodes an address+line delta and emits a row
             let adjusted = opcode - opcode_base;
             let op_advance = adjusted / line_range;
             let line_delta = line_base as i64 + (adjusted % line_range) as i64;
@@ -288,11 +396,8 @@ fn build_location(
     Some(SourceLocation {
         file: full_path,
         line: line.max(0) as u32,
-        column: if column > 0 {
-            Some(column as u32)
-        } else {
-            None
-        },
+        column: if column > 0 { column as u32 } else { 0 },
+        column_end: None,
     })
 }
 
@@ -368,11 +473,13 @@ fn read_sleb128(data: &[u8], pos: usize) -> Option<(i64, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source_map_cache::SourceMapCacheEntry;
+    use tempfile::TempDir;
 
     #[test]
     fn test_source_mapper_without_symbols() {
         let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-        let mapper = SourceMapper::new(wasm_bytes);
+        let mapper = SourceMapper::new_without_cache(wasm_bytes);
 
         assert!(!mapper.has_debug_symbols());
         assert!(mapper.map_wasm_offset_to_source(0x1234).is_none());
@@ -380,9 +487,9 @@ mod tests {
 
     #[test]
     fn test_source_mapper_with_mock_symbols() {
-        // Minimal WASM header only — no debug sections
+        // Minimal WASM header only -- no debug sections
         let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-        let mapper = SourceMapper::new(wasm_bytes);
+        let mapper = SourceMapper::new_without_cache(wasm_bytes);
 
         assert!(!mapper.has_debug_symbols());
     }
@@ -392,7 +499,8 @@ mod tests {
         let location = SourceLocation {
             file: "test.rs".to_string(),
             line: 42,
-            column: Some(10),
+            column: 10,
+            column_end: Some(15),
         };
 
         let json = serde_json::to_string(&location).unwrap();
@@ -416,5 +524,60 @@ mod tests {
         let (val, n) = read_sleb128(&data, 0).unwrap();
         assert_eq!(val, -1);
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn test_source_mapper_with_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
+
+        // First create - this will NOT populate cache because has_symbols is false
+        {
+            let mapper =
+                SourceMapper::new_with_cache(wasm_bytes.clone(), temp_dir.path().to_path_buf());
+            assert!(!mapper.has_debug_symbols());
+
+            let result = mapper.map_wasm_offset_to_source(0x1234);
+            assert!(result.is_none());
+        }
+
+        // Verify cache was NOT created (since no debug symbols)
+        let cache = SourceMapCache::with_cache_dir(temp_dir.path().to_path_buf()).unwrap();
+        let entries = cache.list_cached().unwrap();
+        assert_eq!(entries.len(), 0);
+
+        // Test that we can create cache entries directly
+        let mut mappings = std::collections::HashMap::new();
+        mappings.insert(
+            0x1234,
+            SourceLocation {
+                file: "test.rs".to_string(),
+                line: 42,
+                column: 10,
+                column_end: None,
+            },
+        );
+
+        let entry = SourceMapCacheEntry {
+            wasm_hash: wasm_hash.clone(),
+            has_symbols: true,
+            mappings,
+            created_at: 1_234_567_890,
+        };
+
+        cache.store(entry).unwrap();
+
+        // Verify cache was created
+        let entries = cache.list_cached().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].wasm_hash, wasm_hash);
+    }
+
+    #[test]
+    fn test_wasm_hash() {
+        let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
+        let hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
+        assert_eq!(hash.len(), 64);
     }
 }

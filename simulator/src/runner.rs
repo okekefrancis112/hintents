@@ -18,9 +18,20 @@ pub struct SimHost {
 
 #[allow(dead_code)]
 impl SimHost {
-    /// Initialize a new Host with optional budget settings.
-    pub fn new(budget_limits: Option<(u64, u64)>) -> Self {
+    /// Initialize a new Host with optional budget settings and resource calibration.
+    pub fn new(
+        budget_limits: Option<(u64, u64)>,
+        calibration: Option<crate::types::ResourceCalibration>,
+    ) -> Self {
         let budget = Budget::default();
+
+        if let Some(_calib) = calibration {
+            // NOTE: Resource calibration is accepted but not yet applied to the budget.
+            // The CostModel API was removed in recent soroban-env-host versions.
+            // Budget uses default mainnet cost parameters.
+            eprintln!("Resource calibration provided but not applied (unsupported in this soroban-env-host version).");
+        }
+
         if let Some((_cpu, _mem)) = budget_limits {
             // Budget customization requires testutils feature or extended API
             // Using default mainnet budget settings
@@ -71,14 +82,14 @@ mod tests {
 
     #[test]
     fn test_host_initialization() {
-        let host = SimHost::new(None);
+        let host = SimHost::new(None, None);
         // Basic assertion that host is functional
         assert!(host.inner.budget_cloned().get_cpu_insns_consumed().is_ok());
     }
 
     #[test]
     fn test_configuration() {
-        let mut host = SimHost::new(None);
+        let mut host = SimHost::new(None, None);
         // Test setting contract ID (dummy hash)
         let hash = Hash([0u8; 32]);
         host.set_contract_id(hash);
@@ -92,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_simple_value_handling() {
-        let host = SimHost::new(None);
+        let host = SimHost::new(None, None);
 
         let a = 10u32;
         let b = 20u32;
