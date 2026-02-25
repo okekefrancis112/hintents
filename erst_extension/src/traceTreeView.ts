@@ -49,16 +49,20 @@ export class TraceTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
             }
             return Promise.resolve([]);
         } else {
+            const states = this.currentTrace.states;
             return Promise.resolve(
-                this.currentTrace.states.map(step => new TraceItem(step))
+                states.map((step, idx) => new TraceItem(step, idx > 0 ? states[idx - 1] : undefined))
             );
         }
     }
 }
 
 export class TraceItem extends vscode.TreeItem {
+    public isCrossContractBoundary: boolean;
+
     constructor(
-        public readonly step: TraceStep
+        public readonly step: TraceStep,
+        previousStep?: TraceStep
     ) {
         const isStateUpdate = step.operation === 'StateUpdate' || step.operation === 'LedgerState';
 
@@ -66,6 +70,8 @@ export class TraceItem extends vscode.TreeItem {
             `${step.step}: ${step.operation}${step.function ? ` (${step.function})` : ''}`,
             isStateUpdate ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
         );
+
+        this.isCrossContractBoundary = isCrossContractTransition(previousStep, step);
 
         // Build budget metrics display
         const budgetParts: string[] = [];
@@ -78,11 +84,17 @@ export class TraceItem extends vscode.TreeItem {
         const budgetInfo = budgetParts.length > 0 ? ` [${budgetParts.join(', ')}]` : '';
 
         this.tooltip = `${this.label}${budgetInfo}`;
-        this.description = step.error ? `Error: ${step.error}` : budgetInfo;
-        this.contextValue = 'traceStep';
+        this.description = step.error
+            ? `Error: ${step.error}`
+            : this.isCrossContractBoundary
+                ? `[boundary] ${previousStep?.contract_id} -> ${step.contract_id}${budgetInfo}`
+                : budgetInfo;
+        this.contextValue = this.isCrossContractBoundary ? 'traceStepBoundary' : 'traceStep';
 
         if (step.error) {
             this.iconPath = new (vscode.ThemeIcon as any)('error', new (vscode.ThemeColor as any)('errorForeground'));
+        } else if (this.isCrossContractBoundary) {
+            this.iconPath = new (vscode.ThemeIcon as any)('git-compare', new (vscode.ThemeColor as any)('editorWarning.foreground'));
         } else if (isStateUpdate) {
             this.iconPath = new (vscode.ThemeIcon as any)('database', new (vscode.ThemeColor as any)('symbolIcon.fieldForeground'));
         } else {
@@ -115,6 +127,14 @@ export class TraceItem extends vscode.TreeItem {
         }
         return `${bytes}B`;
     }
+}
+
+// isCrossContractTransition returns true when two consecutive steps belong to different contracts.
+function isCrossContractTransition(prev: TraceStep | undefined, current: TraceStep): boolean {
+    if (!prev || !prev.contract_id || !current.contract_id) {
+        return false;
+    }
+    return prev.contract_id !== current.contract_id;
 }
 
 export class StateDetailItem extends vscode.TreeItem {

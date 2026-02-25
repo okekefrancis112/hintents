@@ -307,6 +307,14 @@ func (v *InteractiveViewer) displayCurrentState() {
 	if state.ContractID != "" {
 		fmt.Println(wrapField("Contract", state.ContractID, termW))
 	}
+
+	// Indicate cross-contract transition from previous step
+	if state.Step > 0 && state.ContractID != "" {
+		prev := &v.trace.States[state.Step-1]
+		if prev.ContractID != "" && prev.ContractID != state.ContractID {
+			fmt.Printf("%s\n", visualizer.ContractBoundary(prev.ContractID, state.ContractID))
+		}
+	}
 	if state.Function != "" {
 		fmt.Println(wrapField("Function", state.Function, termW))
 	}
@@ -453,8 +461,21 @@ func (v *InteractiveViewer) listSteps(countStr string) {
 	}
 	fmt.Println(separator(termW))
 
+	prevContractID := ""
+	if start > 0 {
+		prevContractID = v.trace.States[start-1].ContractID
+	}
+
 	for i := start; i <= end; i++ {
 		state := &v.trace.States[i]
+
+		// Highlight cross-contract call boundary
+		if state.ContractID != "" && prevContractID != "" && state.ContractID != prevContractID {
+			fmt.Printf("     %s\n", visualizer.ContractBoundary(prevContractID, state.ContractID))
+		}
+		if state.ContractID != "" {
+			prevContractID = state.ContractID
+		}
 
 		if v.hideStdLib && strings.HasPrefix(state.Function, "core::") {
 			continue
@@ -499,7 +520,7 @@ func (v *InteractiveViewer) showHelp() {
 	fmt.Println("  p, prev, back           - Step backward")
 	fmt.Println("  j, jump <step>          - Jump to specific step")
 	fmt.Println()
-	fmt.Println("Display/Tree:")
+	fmt.Println("Display:")
 	fmt.Println("  s, show, state          - Show current state")
 	fmt.Println("  S                       - Toggle hiding/showing Rust core::* traces")
 	fmt.Println("  r, reconstruct [step]   - Reconstruct state")

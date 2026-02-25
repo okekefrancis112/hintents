@@ -86,3 +86,12 @@ func (n *TraceNode) CollapseAll() {
 		child.CollapseAll()
 	}
 }
+
+// IsCrossContractCall returns true if this node represents a call to a different
+// contract than its parent.
+func (n *TraceNode) IsCrossContractCall() bool {
+	if n.Parent == nil || n.ContractID == "" || n.Parent.ContractID == "" {
+		return false
+	}
+	return n.ContractID != n.Parent.ContractID
+}
