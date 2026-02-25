@@ -1,7 +1,9 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
-use gimli::{self, ColumnType, Dwarf, EndianSlice, Reader, RunTimeEndian, SectionId};
+use gimli::{
+    self, ColumnType, Dwarf, DwarfSections, EndianSlice, Reader, RunTimeEndian, SectionId,
+};
 use object::{Object, ObjectSection};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -60,17 +62,18 @@ impl SourceMapper {
             RunTimeEndian::Big
         };
 
-        let dwarf_sections = Dwarf::load(|id: SectionId| -> Result<Cow<'_, [u8]>, gimli::Error> {
-            if let Some(section) = obj_file.section_by_name(id.name()) {
-                match section.uncompressed_data() {
-                    Ok(data) => Ok(data),
-                    Err(_) => Ok(Cow::Borrowed(&[])),
+        let dwarf_sections =
+            DwarfSections::load(|id: SectionId| -> Result<Cow<'_, [u8]>, gimli::Error> {
+                if let Some(section) = obj_file.section_by_name(id.name()) {
+                    match section.uncompressed_data() {
+                        Ok(data) => Ok(data),
+                        Err(_) => Ok(Cow::Borrowed(&[])),
+                    }
+                } else {
+                    Ok(Cow::Borrowed(&[]))
                 }
-            } else {
-                Ok(Cow::Borrowed(&[]))
-            }
-        })
-        .map_err(|err| format!("failed to load DWARF: {err}"))?;
+            })
+            .map_err(|err| format!("failed to load DWARF: {err}"))?;
 
         let dwarf = dwarf_sections.borrow(|section| EndianSlice::new(section.as_ref(), endian));
         Self::extract_line_entries(&dwarf)
@@ -227,7 +230,6 @@ impl SourceMapper {
     pub fn has_debug_symbols(&self) -> bool {
         self.has_symbols
     }
-
 }
 
 #[cfg(test)]

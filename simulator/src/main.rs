@@ -10,8 +10,8 @@ mod snapshot;
 mod source_map_cache;
 mod source_mapper;
 mod stack_trace;
-mod vm;
 mod types;
+mod vm;
 mod wasm;
 
 use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
@@ -141,8 +141,8 @@ fn mocked_required_fee_stroops(
 /// instruction prefix, or `None` otherwise.
 fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
     // Budget tick events typically have "budget" and "tick" in their topics
-    let is_budget_tick = topics.iter().any(|t| t.contains("budget"))
-        && topics.iter().any(|t| t.contains("tick"));
+    let is_budget_tick =
+        topics.iter().any(|t| t.contains("budget")) && topics.iter().any(|t| t.contains("tick"));
 
     if !is_budget_tick {
         return None;
@@ -175,12 +175,11 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
 
             let contract_id = e.event.contract_id.as_ref().map(|id| format!("{id:?}"));
             let topics = match &e.event.body {
-                soroban_env_host::xdr::ContractEventBody::V0(v0) => {
-                    v0.topics
-                        .iter()
-                        .map(|t| format!("{:?}", t))
-                        .collect::<Vec<String>>()
-                }
+                soroban_env_host::xdr::ContractEventBody::V0(v0) => v0
+                    .topics
+                    .iter()
+                    .map(|t| format!("{:?}", t))
+                    .collect::<Vec<String>>(),
             };
             let data = match &e.event.body {
                 soroban_env_host::xdr::ContractEventBody::V0(v0) => format!("{:?}", v0.data),
@@ -214,7 +213,7 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
 
 /// Main entry point for the erst simulator.
 ///
-/// Reads a JSON `SimulationRequest` from stdin, 
+/// Reads a JSON `SimulationRequest` from stdin,
 /// initializes a Soroban host environment, and outputs a JSON
 /// `SimulationResponse` with simulation results or errors.
 ///
@@ -274,7 +273,10 @@ fn main() {
                 stack_trace: None,
                 wasm_offset: None,
             };
-            println!("{}", serde_json::to_string(&res).expect("Failed to serialize error response"));
+            println!(
+                "{}",
+                serde_json::to_string(&res).expect("Failed to serialize error response")
+            );
             return;
         }
     };
@@ -364,10 +366,14 @@ fn main() {
     // --- START: Local WASM Loading Integration (Issue #70) ---
     if let Some(path) = &request.wasm_path {
         match wasm::load_wasm_from_path(path) {
-            Ok(wasm_bytes) => match host.invoke_function(soroban_env_host::xdr::HostFunction::UploadContractWasm(wasm_bytes.try_into().unwrap_or_default())) {
-                Ok(hash) => eprintln!("Successfully loaded local WASM. Hash: {:?}", hash),
-                Err(e) => send_error(format!("Host failed to upload local WASM: {:?}", e)),
-            },
+            Ok(wasm_bytes) => {
+                match host.invoke_function(soroban_env_host::xdr::HostFunction::UploadContractWasm(
+                    wasm_bytes.try_into().unwrap_or_default(),
+                )) {
+                    Ok(hash) => eprintln!("Successfully loaded local WASM. Hash: {:?}", hash),
+                    Err(e) => send_error(format!("Host failed to upload local WASM: {:?}", e)),
+                }
+            }
             Err(e) => send_error(format!("Local WASM loading failed: {}", e)),
         }
     }
@@ -690,7 +696,7 @@ fn main() {
             for event in &diagnostic_events {
                 let mut combined_text = event.data.clone();
                 for topic in &event.topics {
-                    combined_text.push_str(" ");
+                    combined_text.push(' ');
                     combined_text.push_str(topic);
                 }
 
@@ -739,12 +745,14 @@ fn main() {
 
             let wasm_offset = extract_wasm_offset(&error_debug);
 
-            let source_location: Option<String> = if let (Some(offset), Some(mapper)) = (wasm_offset, source_mapper.as_ref()) {
-                mapper.map_wasm_offset_to_source(offset)
-                    .and_then(|loc| serde_json::to_string(&loc).ok())
-            } else {
-                None
-            };
+            let source_location: Option<String> =
+                if let (Some(offset), Some(mapper)) = (wasm_offset, source_mapper.as_ref()) {
+                    mapper
+                        .map_wasm_offset_to_source(offset)
+                        .and_then(|loc| serde_json::to_string(&loc).ok())
+                } else {
+                    None
+                };
 
             let response = SimulationResponse {
                 status: "error".to_string(),
@@ -796,11 +804,13 @@ fn extract_wasm_offset(error_msg: &str) -> Option<u64> {
     // Look for patterns like "@ 0x[HEX]" in the error message
     // Soroban/Wasmi errors often contain stack traces like:
     // "  0: func[42] @ 0xa3c"
-    
+
     for line in error_msg.lines() {
         if let Some(pos) = line.find("@ 0x") {
             let hex_part = &line[pos + 4..];
-            let end = hex_part.find(|c: char| !c.is_ascii_hexdigit()).unwrap_or(hex_part.len());
+            let end = hex_part
+                .find(|c: char| !c.is_ascii_hexdigit())
+                .unwrap_or(hex_part.len());
             if let Ok(offset) = u64::from_str_radix(&hex_part[..end], 16) {
                 return Some(offset);
             }
@@ -815,7 +825,10 @@ mod tests {
 
     #[test]
     fn test_decode_vm_traps() {
-        assert!(decode_error("Error: Wasm Trap: out of bounds memory access").contains("VM Trap: Out of Bounds Access"));
+        assert!(
+            decode_error("Error: Wasm Trap: out of bounds memory access")
+                .contains("VM Trap: Out of Bounds Access")
+        );
         assert!(decode_error("Panic: unreachable").contains("VM Trap: Unreachable Instruction"));
         assert!(decode_error("integer divide by zero").contains("VM Trap: Division by Zero"));
         assert!(decode_error("stack overflow occurred").contains("VM Trap: Stack Overflow"));
@@ -868,8 +881,8 @@ mod tests {
     fn test_in_successful_contract_call_is_negation_of_failed_call() {
         use soroban_env_host::events::{Events, HostEvent};
         use soroban_env_host::xdr::{
-            ContractEvent, ContractEventBody, ContractEventType, ContractEventV0,
-            ExtensionPoint, VecM,
+            ContractEvent, ContractEventBody, ContractEventType, ContractEventV0, ExtensionPoint,
+            VecM,
         };
 
         let make_event = |failed: bool| -> HostEvent {
@@ -912,8 +925,8 @@ mod tests {
     fn test_categorize_events_type_labels() {
         use soroban_env_host::events::{Events, HostEvent};
         use soroban_env_host::xdr::{
-            ContractEvent, ContractEventBody, ContractEventType, ContractEventV0,
-            ExtensionPoint, VecM,
+            ContractEvent, ContractEventBody, ContractEventType, ContractEventV0, ExtensionPoint,
+            VecM,
         };
 
         let make_typed_event = |t: ContractEventType| HostEvent {

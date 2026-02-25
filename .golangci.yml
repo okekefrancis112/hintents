@@ -13,9 +13,6 @@ linters:
     - govet
     - gosimple
     - typecheck
-    - deadcode
-    - varcheck
-    - structcheck
 
 linters-settings:
   gocyclo:
