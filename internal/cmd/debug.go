@@ -37,24 +37,27 @@ import (
 )
 
 var (
-	networkFlag        string
-	rpcURLFlag         string
-	rpcTokenFlag       string
-	tracingEnabled     bool
-	otlpExporterURL    string
-	generateTrace      bool
-	traceOutputFile    string
-	snapshotFlag       string
-	compareNetworkFlag string
-	verbose            bool
-	wasmPath           string
-	args               []string
-	noCacheFlag        bool
-	demoMode           bool
-	watchFlag          bool
-	watchTimeoutFlag   int
-	mockBaseFeeFlag    uint32
-	mockGasPriceFlag   uint64
+	networkFlag         string
+	rpcURLFlag          string
+	rpcTokenFlag        string
+	tracingEnabled      bool
+	otlpExporterURL     string
+	generateTrace       bool
+	traceOutputFile     string
+	snapshotFlag        string
+	compareNetworkFlag  string
+	verbose             bool
+	wasmPath            string
+	args                []string
+	themeFlag           string
+	noCacheFlag         bool
+	demoMode            bool
+	watchFlag           bool
+	watchTimeoutFlag    int
+	mockTimeFlag        int64
+	protocolVersionFlag uint32
+	mockBaseFeeFlag     uint32
+	mockGasPriceFlag    uint64
 )
 
 // DebugCommand holds dependencies for the debug command
@@ -499,7 +502,7 @@ Local WASM Replay Mode:
 						Timestamp:     ts,
 					}
 					applySimulationFeeMocks(primaryReq)
-					primaryResult, primaryErr = runner.Run(primaryReq)
+					primaryResult, primaryErr = runner.Run(ctx, primaryReq)
 				}()
 
 				go func() {
@@ -539,7 +542,7 @@ Local WASM Replay Mode:
 						Timestamp:     ts,
 					}
 					applySimulationFeeMocks(compareReq)
-					compareResult, compareErr = runner.Run(compareReq)
+					compareResult, compareErr = runner.Run(ctx, compareReq)
 				}()
 
 				wg.Wait()
@@ -1089,10 +1092,13 @@ func init() {
 	debugCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	debugCmd.Flags().StringVar(&wasmPath, "wasm", "", "Path to local WASM file for local replay (no network required)")
 	debugCmd.Flags().StringSliceVar(&args, "args", []string{}, "Mock arguments for local replay (JSON array of strings)")
+	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Output theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
 	debugCmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "Disable local ledger state caching")
 	debugCmd.Flags().BoolVar(&demoMode, "demo", false, "Print sample output (no network) - for testing color detection")
 	debugCmd.Flags().BoolVar(&watchFlag, "watch", false, "Poll for transaction on-chain before debugging")
 	debugCmd.Flags().IntVar(&watchTimeoutFlag, "watch-timeout", 30, "Timeout in seconds for watch mode")
+	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Override timestamp used by simulator")
+	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version used by simulator")
 	debugCmd.Flags().Uint32Var(&mockBaseFeeFlag, "mock-base-fee", 0, "Override base fee (stroops) for local fee sufficiency checks")
 	debugCmd.Flags().Uint64Var(&mockGasPriceFlag, "mock-gas-price", 0, "Override gas price multiplier for local fee sufficiency checks")
 

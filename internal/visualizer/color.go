@@ -3,8 +3,18 @@
 
 package visualizer
 
-import (
-	"github.com/dotandev/hintents/internal/terminal"
+import "github.com/dotandev/hintents/internal/terminal"
+
+const (
+	sgrReset   = "\033[0m"
+	sgrBold    = "\033[1m"
+	sgrDim     = "\033[2m"
+	sgrRed     = "\033[31m"
+	sgrGreen   = "\033[32m"
+	sgrYellow  = "\033[33m"
+	sgrBlue    = "\033[34m"
+	sgrMagenta = "\033[35m"
+	sgrCyan    = "\033[36m"
 )
 
 var defaultRenderer terminal.Renderer = terminal.NewANSIRenderer()
@@ -22,41 +32,16 @@ func Colorize(text string, color string) string {
 // Success returns a success indicator.
 func Success() string {
 	return defaultRenderer.Success()
-// ContractBoundary returns a visual separator for cross-contract call transitions.
-func ContractBoundary(fromContract, toContract string) string {
-	if ColorEnabled() {
-		return sgrMagenta + sgrBold + "--- contract boundary: " + fromContract + " -> " + toContract + " ---" + sgrReset
-	}
-	return "--- contract boundary: " + fromContract + " -> " + toContract + " ---"
-}
-
-// Success returns a success indicator: colored checkmark if enabled, "[OK]" otherwise.
-func Success() string {
-	if ColorEnabled() {
-		return themeColors("success") + "[OK]" + sgrReset
-	}
-	return "[OK]"
 }
 
 // Warning returns a warning indicator.
 func Warning() string {
 	return defaultRenderer.Warning()
-	if ColorEnabled() {
-		return themeColors("warning") + "[!]" + sgrReset
-	}
-	return "[!]"
 }
 
 // Error returns an error indicator.
 func Error() string {
 	return defaultRenderer.Error()
-}
-
-// Symbol returns a symbol that may be styled.
-	if ColorEnabled() {
-		return themeColors("error") + "[X]" + sgrReset
-	}
-	return "[X]"
 }
 
 // Info returns an info indicator with theme-aware coloring.
@@ -67,7 +52,15 @@ func Info() string {
 	return "[i]"
 }
 
-// Symbol returns a symbol that may be styled; when colors disabled, returns plain ASCII equivalent.
+// ContractBoundary returns a visual separator for cross-contract call transitions.
+func ContractBoundary(fromContract, toContract string) string {
+	if ColorEnabled() {
+		return sgrMagenta + sgrBold + "--- contract boundary: " + fromContract + " -> " + toContract + " ---" + sgrReset
+	}
+	return "--- contract boundary: " + fromContract + " -> " + toContract + " ---"
+}
+
+// Symbol returns a symbol that may be styled; when colors are disabled, returns plain ASCII.
 //
 //nolint:gocyclo
 func Symbol(name string) string {
