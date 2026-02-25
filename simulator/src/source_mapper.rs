@@ -3,7 +3,7 @@
 
 use gimli::{self, ColumnType, Dwarf, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 pub struct SourceMapper {
@@ -143,7 +143,8 @@ impl SourceMapper {
                     let location = SourceLocation {
                         file: file_name,
                         line: line.get() as u32,
-                        column,
+                        column: column.unwrap_or(0),
+                        column_end: None,
                     };
 
                     if let Some((start, prev_location)) = pending.replace((row.address(), location))
@@ -227,10 +228,6 @@ impl SourceMapper {
         self.has_symbols
     }
 
-    /// Returns the WASM hash used for caching
-    pub fn get_wasm_hash(&self) -> &str {
-        &self.wasm_hash
-    }
 }
 
 #[cfg(test)]
@@ -263,7 +260,8 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 10,
-                    column: Some(1),
+                    column: 1,
+                    column_end: None,
                 },
             },
             CachedLineEntry {
@@ -272,14 +270,15 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 20,
-                    column: Some(2),
+                    column: 2,
+                    column_end: None,
                 },
             },
         ]);
 
         let loc = mapper.map_wasm_offset_to_source(0x18).expect("mapping");
         assert_eq!(loc.line, 10);
-        assert_eq!(loc.column, Some(1));
+        assert_eq!(loc.column, 1);
 
         let loc = mapper.map_wasm_offset_to_source(0x25).expect("mapping");
         assert_eq!(loc.line, 20);
@@ -293,7 +292,8 @@ mod tests {
             location: SourceLocation {
                 file: "mod.rs".into(),
                 line: 7,
-                column: None,
+                column: 0,
+                column_end: None,
             },
         }]);
 
@@ -316,20 +316,19 @@ mod tests {
 
     #[test]
     fn test_source_mapper_with_cache() {
+        use crate::source_map_cache::{SourceMapCache, SourceMapCacheEntry};
+
         let temp_dir = TempDir::new().unwrap();
         let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
         let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
 
-        // First create - this will NOT populate cache because has_symbols is false
-        // The current implementation only caches when debug symbols are present
+        // Create mapper using existing API - has_symbols will be false for bare WASM header
         {
-            let mapper =
-                SourceMapper::new_with_cache(wasm_bytes.clone(), temp_dir.path().to_path_buf());
+            let mapper = SourceMapper::new(wasm_bytes.clone());
             assert!(!mapper.has_debug_symbols());
 
-            // Try to map - should work even without symbols
+            // Try to map - should return None without symbols
             let result = mapper.map_wasm_offset_to_source(0x1234);
-            // Without debug symbols, should return None
             assert!(result.is_none());
         }
 
@@ -345,7 +344,8 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: Some(10),
+                column: 10,
+                column_end: None,
             },
         );
 
@@ -366,6 +366,8 @@ mod tests {
 
     #[test]
     fn test_wasm_hash() {
+        use crate::source_map_cache::SourceMapCache;
+
         let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
         let hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
         assert_eq!(hash.len(), 64);
