@@ -17,6 +17,7 @@ Each ADR follows the standard format:
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [001](001-snapshot-caching-strategy.md) | Snapshot Caching Strategy using Bincode and SHA256 | Accepted | 2026-02-26 |
+| [002](002-hsm-integration.md) | HSM Integration for Cryptographic Operations | Accepted | 2026-02-26 |
 
 ## ADR Process
 
