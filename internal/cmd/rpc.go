@@ -28,6 +28,8 @@ var rpcHealthCmd = &cobra.Command{
 	Short:   "Check the health of configured RPC endpoints",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		urls := []string{}
+		timeout := 15 * time.Second
+
 		if rpcHealthURLFlag != "" {
 			urls = strings.Split(rpcHealthURLFlag, ",")
 		} else {
@@ -37,6 +39,9 @@ var rpcHealthCmd = &cobra.Command{
 					urls = cfg.RpcUrls
 				} else if cfg.RpcUrl != "" {
 					urls = []string{cfg.RpcUrl}
+				}
+				if cfg.RequestTimeout > 0 {
+					timeout = time.Duration(cfg.RequestTimeout) * time.Second
 				}
 			}
 		}
@@ -49,7 +54,7 @@ var rpcHealthCmd = &cobra.Command{
 		fmt.Println()
 
 		client := &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: timeout,
 		}
 
 		for i, url := range urls {

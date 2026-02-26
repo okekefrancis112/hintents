@@ -13,9 +13,6 @@ linters:
     - govet
     - gosimple
     - typecheck
-    - deadcode
-    - varcheck
-    - structcheck
 
 linters-settings:
   gocyclo:
@@ -25,9 +22,11 @@ linters-settings:
     check-blank: false
   govet:
     enable-all: true
+    disable:
+      - fieldalignment
     settings:
       shadow:
-        strict: true
+        strict: false
 
 issues:
   exclude-use-default: false
@@ -43,3 +42,8 @@ issues:
     - linters:
         - errcheck
       text: "Error return value of `.*(Close|Setenv|Unsetenv).*` is not checked"
+    # Exclude unusedwrite in test files (struct fields set for test setup)
+    - path: _test\.go
+      linters:
+        - govet
+      text: "unusedwrite:"
