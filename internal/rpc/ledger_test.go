@@ -491,7 +491,7 @@ func TestGetLedgerHeader_GenericError(t *testing.T) {
 	assert.False(t, IsLedgerNotFound(err))
 	assert.False(t, IsLedgerArchived(err))
 	assert.False(t, IsRateLimitError(err))
-	assert.Contains(t, err.Error(), "RPC connection failed")
+	assert.True(t, errors.Is(err, errors.ErrRPCConnectionFailed))
 }
 
 // TestFromHorizonLedger tests the conversion from Horizon ledger to our structure
