@@ -788,8 +788,7 @@ fn main() {
                 // mappable source location so callers can correlate failures.
                 source_location: source_mapper
                     .as_ref()
-                    .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
-                    .and_then(|loc| serde_json::to_string(&loc).ok()),
+                    .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0)),
                 linear_memory_dump: None,
             };
 
@@ -806,15 +805,6 @@ fn main() {
             let decoded_msg = decode_error(&error_debug);
             let wasm_trace = WasmStackTrace::from_host_error(&error_debug);
             let trace_display = wasm_trace.display();
-
-            let _structured_error = StructuredError {
-                error_type: "HostError".to_string(),
-                message: decoded_msg.clone(),
-                details: Some(format!(
-                    "Contract execution failed with host error: {}",
-                    decoded_msg
-                )),
-            };
 
             let wasm_offset = extract_wasm_offset(&error_debug);
 
@@ -891,16 +881,23 @@ fn main() {
                     || combined_text.contains("Error")
                     || combined_text.contains("Trap")
                 {
-                    if !combined_text.contains("core/src/panicking")
-                        && !combined_text.contains("std::rt")
-                        && !combined_text.contains("rust_begin_unwind")
-                        && !combined_text.contains("compiler_builtins")
+                    // Ignore known Rust stdlib wrappers commonly seen in Backtrace/Diagnostic events
+                    if combined_text.contains("core/src/panicking.rs")
+                        || combined_text.contains("core::panicking")
+                        || combined_text.contains("rust_begin_unwind")
+                        || combined_text.contains("std::rt::lang_start")
+                        || combined_text.contains("compiler_builtins")
+                        || combined_text.contains("rustc_std_workspace")
                     {
-                        if combined_text.contains(".rs")
-                            && !combined_text.contains("soroban-env-host")
-                        {
-                            user_panic_point = Some(combined_text.replace("\"", ""));
-                        }
+                        continue;
+                    }
+
+                    // Look for common user paths (like src/lib.rs, etc)
+                    if combined_text.contains(".rs") && !combined_text.contains("soroban-env-host")
+                    {
+                        user_panic_point = Some(combined_text.replace("\"", ""));
+                        // Break after finding the first valid panic point
+                        break;
                     }
                 }
             }
@@ -922,16 +919,11 @@ fn main() {
 
             let source_location =
                 if let (Some(offset), Some(mapper)) = (wasm_offset, &source_mapper) {
-                    mapper
-                        .map_wasm_offset_to_source(offset)
-                        .and_then(|loc| serde_json::to_string(&loc).ok())
+                    mapper.map_wasm_offset_to_source(offset)
                 } else {
-                    user_panic_point.or_else(|| {
-                        source_mapper
-                            .as_ref()
-                            .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
-                            .and_then(|loc| serde_json::to_string(&loc).ok())
-                    })
+                    source_mapper
+                        .as_ref()
+                        .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
                 };
 
             let response = SimulationResponse {

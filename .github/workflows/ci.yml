@@ -171,7 +171,8 @@ jobs:
     needs: license-headers
     strategy:
       matrix:
-        rust-version: [stable, "1.85.0"]
+        # Rust 1.87+ is required for ruzstd 0.8.x which uses the stabilized `unsigned_is_multiple_of` feature
+        rust-version: [stable, "1.87"]
     defaults:
       run:
         working-directory: simulator
