@@ -544,12 +544,14 @@ func TestSourceCache_Clear(t *testing.T) {
 			Files:      map[string]string{},
 			FetchedAt:  time.Now(),
 		}
-		if err := cache.Put(source); err != nil {
+		err = cache.Put(source)
+		if err != nil {
 			t.Fatalf("Put failed for entry %d: %v", i, err)
 		}
 	}
 
-	if err := cache.Clear(); err != nil {
+	err = cache.Clear()
+	if err != nil {
 		t.Fatalf("Clear failed: %v", err)
 	}
 
@@ -661,7 +663,8 @@ func TestResolver_ResolveFromCache(t *testing.T) {
 		},
 		FetchedAt: time.Now(),
 	}
-	if err := cache.Put(source); err != nil {
+	err = cache.Put(source)
+	if err != nil {
 		t.Fatalf("failed to put cache entry: %v", err)
 	}
 

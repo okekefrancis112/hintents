@@ -46,13 +46,13 @@ func (tv *TreeViewerWithMouse) StartWithMouse() error {
 	if err := tv.enableRawMode(); err != nil {
 		return fmt.Errorf("failed to enable raw mode: %w", err)
 	}
-	defer tv.restoreTerminalState(initialTermState)
+	defer func() { _ = tv.restoreTerminalState(initialTermState) }()
 
 	// Enable mouse tracking
 	if err := tv.mouseTracker.Enable(); err != nil {
 		return fmt.Errorf("failed to enable mouse tracking: %w", err)
 	}
-	defer tv.mouseTracker.Disable()
+	defer func() { _ = tv.mouseTracker.Disable() }()
 
 	// Build initial tree
 	nodes := make([]*TraceNode, 0)
@@ -259,7 +259,7 @@ Press any key to continue...
 
 	// Wait for input
 	buf := make([]byte, 1)
-	syscall.Read(0, buf)
+	_, _ = syscall.Read(0, buf)
 
 	tv.renderView()
 }

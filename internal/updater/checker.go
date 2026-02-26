@@ -77,7 +77,8 @@ func (c *Checker) CheckForUpdates() {
 	}
 
 	// Update cache with the latest version
-	if err := c.updateCache(latestVersion); err != nil {
+	err = c.updateCache(latestVersion)
+	if err != nil {
 		// Silent failure
 		return
 	}

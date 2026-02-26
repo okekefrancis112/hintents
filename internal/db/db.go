@@ -39,7 +39,8 @@ func InitDB() (*Store, error) {
 		return nil, fmt.Errorf("failed to get home dir: %w", err)
 	}
 	dir := filepath.Join(home, ".erst")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
 		return nil, fmt.Errorf("failed to create data dir: %w", err)
 	}
 	dbPath := filepath.Join(dir, "sessions.db")

@@ -134,7 +134,7 @@ func renderEventDiffs(diffs []EventDiff) {
 	for _, d := range diffs {
 		localEvt := truncate(d.LocalEvent, colWidth)
 		onChainEvt := truncate(d.OnChainEvent, colWidth)
-		marker := "  "
+		var marker string
 		if d.Divergent {
 			marker = visualizer.Colorize("[!]", "yellow") + " "
 		} else {

@@ -262,7 +262,8 @@ func (rc *RegistryClient) fetchRepositorySource(ctx context.Context, repoURL str
 	var repoMeta struct {
 		DefaultBranch string `json:"default_branch"`
 	}
-	if err := json.Unmarshal(body, &repoMeta); err != nil {
+	err = json.Unmarshal(body, &repoMeta)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse GitHub repo metadata: %w", err)
 	}
 
@@ -288,7 +289,8 @@ func (rc *RegistryClient) fetchRepositorySource(ctx context.Context, repoURL str
 			Size int    `json:"size"`
 		} `json:"tree"`
 	}
-	if err := json.Unmarshal(body, &tree); err != nil {
+	err = json.Unmarshal(body, &tree)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse repository tree: %w", err)
 	}
 

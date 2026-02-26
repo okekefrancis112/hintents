@@ -101,7 +101,8 @@ func (g *TestGenerator) GenerateGoTest(data *TestData) error {
 
 	// Create output directory
 	outputDir := filepath.Join(g.OutputDir, "internal", "simulator", "regression_tests")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	err = os.MkdirAll(outputDir, 0755)
+	if err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -131,7 +132,8 @@ func (g *TestGenerator) GenerateRustTest(data *TestData) error {
 
 	// Create output directory
 	outputDir := filepath.Join(g.OutputDir, "simulator", "tests", "regression")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	err = os.MkdirAll(outputDir, 0755)
+	if err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 

@@ -129,13 +129,15 @@ func reportExec(cmd *cobra.Command, args []string) error {
 	}
 
 	if reportFormat == "json" {
-		jsonData, err := json.MarshalIndent(generatedReport, "", "  ")
+		var jsonData []byte
+		jsonData, err = json.MarshalIndent(generatedReport, "", "  ")
 		if err != nil {
 			return errors.WrapMarshalFailed(err)
 		}
 
 		filename := reportOutput + "/report.json"
-		if err := os.WriteFile(filename, jsonData, 0644); err != nil {
+		err = os.WriteFile(filename, jsonData, 0644)
+		if err != nil {
 			return errors.WrapValidationError(fmt.Sprintf("failed to write JSON report: %v", err))
 		}
 

@@ -353,7 +353,8 @@ Local WASM Replay Mode:
 
 			spinner.Start("Waiting for transaction to appear on-chain...")
 
-			result, err := poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
+			var result *watch.PollResult
+			result, err = poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
 				_, pollErr := client.GetTransaction(pollCtx, txHash)
 				if pollErr != nil {
 					return nil, pollErr
@@ -417,7 +418,8 @@ Local WASM Replay Mode:
 			if compareNetworkFlag == "" {
 				// Single Network Run
 				if snapshotFlag != "" {
-					snap, err := snapshot.Load(snapshotFlag)
+					var snap *snapshot.Snapshot
+					snap, err = snapshot.Load(snapshotFlag)
 					if err != nil {
 						return errors.WrapValidationError(fmt.Sprintf("failed to load snapshot: %v", err))
 					}
@@ -448,8 +450,8 @@ Local WASM Replay Mode:
 
 				// Apply protocol version override if specified
 				if protocolVersionFlag > 0 {
-					if err := simulator.Validate(protocolVersionFlag); err != nil {
-						return fmt.Errorf("invalid protocol version %d: %w", protocolVersionFlag, err)
+					if valErr := simulator.Validate(protocolVersionFlag); valErr != nil {
+						return fmt.Errorf("invalid protocol version %d: %w", protocolVersionFlag, valErr)
 					}
 					simReq.ProtocolVersion = &protocolVersionFlag
 					fmt.Printf("Using protocol version override: %d\n", protocolVersionFlag)
@@ -569,7 +571,8 @@ Local WASM Replay Mode:
 			suggestionEngine := decoder.NewSuggestionEngine()
 
 			// Decode events for analysis
-			callTree, err := decoder.DecodeEvents(lastSimResp.Events)
+			var callTree *decoder.CallNode
+			callTree, err = decoder.DecodeEvents(lastSimResp.Events)
 			if err == nil && callTree != nil {
 				suggestions := suggestionEngine.AnalyzeCallTree(callTree)
 				if len(suggestions) > 0 {
@@ -618,13 +621,13 @@ Local WASM Replay Mode:
 		}
 
 		// Analysis: Token Flows
-		if report, err := tokenflow.BuildReport(resp.EnvelopeXdr, resp.ResultMetaXdr); err == nil && len(report.Agg) > 0 {
+		if tfReport, tfErr := tokenflow.BuildReport(resp.EnvelopeXdr, resp.ResultMetaXdr); tfErr == nil && len(tfReport.Agg) > 0 {
 			fmt.Printf("\nToken Flow Summary:\n")
-			for _, line := range report.SummaryLines() {
+			for _, line := range tfReport.SummaryLines() {
 				fmt.Printf("  %s\n", line)
 			}
 			fmt.Printf("\nToken Flow Chart (Mermaid):\n")
-			fmt.Println(report.MermaidFlowchart())
+			fmt.Println(tfReport.MermaidFlowchart())
 		}
 
 		// Session Management

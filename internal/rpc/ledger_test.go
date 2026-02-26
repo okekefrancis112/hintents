@@ -225,7 +225,8 @@ func TestExtractFromChanges(t *testing.T) {
 		}
 
 		var key xdr.LedgerKey
-		if err := key.UnmarshalBinary(keyBytes); err != nil {
+		err = key.UnmarshalBinary(keyBytes)
+		if err != nil {
 			t.Fatalf("Failed to unmarshal key: %v", err)
 		}
 

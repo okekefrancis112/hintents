@@ -147,7 +147,8 @@ func OpenDB() (*DB, error) {
 	}
 	dbPath := filepath.Join(home, ".erst", "sessions.db")
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	err = os.MkdirAll(filepath.Dir(dbPath), 0755)
+	if err != nil {
 		return nil, err
 	}
 

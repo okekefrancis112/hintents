@@ -49,7 +49,8 @@ func LoadConfig() (GlobalConfig, error) {
 	}
 
 	// If config file doesn't exist, return default config
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	_, err = os.Stat(configPath)
+	if os.IsNotExist(err) {
 		logger.Logger.Debug("Config file does not exist, using defaults")
 		return DefaultGlobalConfig(), nil
 	}
@@ -79,7 +80,8 @@ func SaveConfig(config GlobalConfig) error {
 
 	// Create directory if it doesn't exist
 	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	err = os.MkdirAll(configDir, 0755)
+	if err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 

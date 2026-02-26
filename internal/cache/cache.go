@@ -227,7 +227,8 @@ func (m *Manager) Clean(force bool) (*CleanupStatus, error) {
 	if !force {
 		fmt.Print("\nThis will delete the oldest cached files. Continue? (yes/no): ")
 		var response string
-		if _, err := fmt.Scanln(&response); err != nil {
+		_, err = fmt.Scanln(&response)
+		if err != nil {
 			return status, fmt.Errorf("failed to read input: %w", err)
 		}
 		if response != "yes" && response != "y" {

@@ -5,9 +5,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"runtime/debug"
 
@@ -21,22 +19,6 @@ var (
 	version   = "dev"
 	commitSHA = "unknown"
 )
-
-// ─── Example RPC handler ──────────────────────────────────────────────────────
-
-func rpcHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"jsonrpc": "2.0",
-		"result":  "0xdeadbeef",
-		"id":      1,
-	})
-}
-
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "ok")
-}
 
 func main() {
 	ctx := context.Background()

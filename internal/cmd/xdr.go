@@ -39,14 +39,16 @@ func xdrExec(cmd *cobra.Command, args []string) error {
 
 	switch xdrType {
 	case "ledger-entry":
-		le, err := decoder.DecodeXDRBase64AsLedgerEntry(string(data))
+		var le interface{}
+		le, err = decoder.DecodeXDRBase64AsLedgerEntry(string(data))
 		if err != nil {
 			return errors.WrapUnmarshalFailed(err, "ledger entry")
 		}
 		output = le
 
 	case "diagnostic-event":
-		event, err := decoder.DecodeXDRBase64AsDiagnosticEvent(string(data))
+		var event interface{}
+		event, err = decoder.DecodeXDRBase64AsDiagnosticEvent(string(data))
 		if err != nil {
 			return errors.WrapUnmarshalFailed(err, "diagnostic event")
 		}

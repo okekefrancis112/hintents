@@ -13,7 +13,6 @@ import (
 
 var (
 	fuzzIterations     uint64
-	fuzzSeed           uint64
 	fuzzTimeout        uint64
 	fuzzMaxSize        int
 	fuzzInputXDR       string
@@ -80,11 +79,12 @@ func runFuzz(cmd *cobra.Command, args []string) error {
 	// If specific XDR is provided, validate and fuzz it
 	if fuzzInputXDR != "" {
 		// Validate it's valid hex
-		if _, err := hex.DecodeString(fuzzInputXDR); err != nil {
-			return fmt.Errorf("invalid XDR hex encoding: %w", err)
+		if _, hexErr := hex.DecodeString(fuzzInputXDR); hexErr != nil {
+			return fmt.Errorf("invalid XDR hex encoding: %w", hexErr)
 		}
 
-		result, err := harness.FuzzXDR(fuzzInputXDR)
+		var result *simulator.FuzzingResult
+		result, err = harness.FuzzXDR(fuzzInputXDR)
 		if err != nil {
 			return fmt.Errorf("fuzzing failed: %w", err)
 		}

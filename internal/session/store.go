@@ -63,7 +63,8 @@ func NewStore() (*Store, error) {
 	}
 
 	erstDir := filepath.Join(homeDir, ".erst")
-	if err := os.MkdirAll(erstDir, 0755); err != nil {
+	err = os.MkdirAll(erstDir, 0755)
+	if err != nil {
 		return nil, fmt.Errorf("failed to create .erst directory: %w", err)
 	}
 

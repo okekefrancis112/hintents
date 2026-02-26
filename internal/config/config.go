@@ -83,7 +83,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// If file doesn't exist, return default config
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	_, err = os.Stat(configPath)
+	if os.IsNotExist(err) {
 		return DefaultConfig(), nil
 	}
 
@@ -256,7 +257,8 @@ func SaveConfig(config *Config) error {
 
 	// Ensure config directory exists
 	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0700); err != nil {
+	err = os.MkdirAll(configDir, 0700)
+	if err != nil {
 		return errors.WrapConfigError("failed to create config directory", err)
 	}
 
@@ -266,7 +268,8 @@ func SaveConfig(config *Config) error {
 	}
 
 	// Write with restricted permissions (owner only)
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	err = os.WriteFile(configPath, data, 0600)
+	if err != nil {
 		return errors.WrapConfigError("failed to write config file", err)
 	}
 

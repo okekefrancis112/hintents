@@ -42,18 +42,18 @@ Use this to troubleshoot installation issues or verify your setup.`,
 	RunE: runDoctor,
 }
 
-func runDoctor(cmd *cobra.Command, args []string) error {
-	verbose, _ := cmd.Flags().GetBool("verbose")
+func runDoctor(cmd *cobra.Command, _ []string) error {
+	verboseMode, _ := cmd.Flags().GetBool("verbose")
 
 	fmt.Println("Erst Environment Diagnostics")
 	fmt.Println("=============================")
 	fmt.Println()
 
 	dependencies := []DependencyStatus{
-		checkGo(verbose),
-		checkRust(verbose),
-		checkCargo(verbose),
-		checkSimulator(verbose),
+		checkGo(verboseMode),
+		checkRust(verboseMode),
+		checkCargo(verboseMode),
+		checkSimulator(verboseMode),
 	}
 
 	// Print results
@@ -73,7 +73,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println()
 
-		if verbose && dep.Path != "" {
+		if verboseMode && dep.Path != "" {
 			fmt.Printf("  Path: %s\n", dep.Path)
 		}
 
