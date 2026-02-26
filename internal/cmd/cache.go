@@ -32,8 +32,9 @@ func getCacheDir() string {
 }
 
 var cacheCmd = &cobra.Command{
-	Use:   "cache",
-	Short: "Manage transaction and simulation cache",
+	Use:     "cache",
+	GroupID: "management",
+	Short:   "Manage transaction and simulation cache",
 	Long: `Manage the local cache that stores transaction data and simulation results.
 Caching improves performance and enables offline analysis.
 
