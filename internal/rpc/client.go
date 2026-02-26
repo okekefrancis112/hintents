@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dotandev/hintents/internal/logger"
+	"github.com/dotandev/hintents/internal/metrics"
 
 	"github.com/dotandev/hintents/internal/telemetry"
 	"github.com/stellar/go-stellar-sdk/clients/horizonclient"
@@ -96,6 +97,17 @@ var (
 	}
 )
 
+// Middleware defines a function that wraps an http.RoundTripper
+type Middleware func(http.RoundTripper) http.RoundTripper
+
+// RoundTripperFunc is a helper to implement http.RoundTripper with a function
+type RoundTripperFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper
+func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // Client handles interactions with the Stellar Network
 type Client struct {
 	Horizon         horizonclient.ClientInterface
@@ -112,6 +124,7 @@ type Client struct {
 	methodTelemetry MethodTelemetry
 	failures        map[string]int
 	lastFailure     map[string]time.Time
+	middlewares     []Middleware
 }
 
 // NodeFailure records a failure for a specific RPC URL
@@ -278,7 +291,7 @@ func (c *Client) rotateURL() bool {
 	c.SorobanURL = c.HorizonURL
 	httpClient := c.httpClient
 	if httpClient == nil {
-		httpClient = createHTTPClient(c.token, defaultHTTPTimeout)
+		httpClient = createHTTPClient(c.token, defaultHTTPTimeout, c.middlewares...)
 	}
 	c.Horizon = &horizonclient.Client{
 		HorizonURL: c.HorizonURL,
@@ -304,8 +317,8 @@ func (c *Client) startMethodTimer(ctx context.Context, method string, attributes
 	return c.methodTelemetry.StartMethodTimer(ctx, method, attributes)
 }
 
-// createHTTPClient creates an HTTP client with optional authentication and a configurable timeout.
-func createHTTPClient(token string, timeout time.Duration) *http.Client {
+// createHTTPClient creates an HTTP client with optional authentication, a configurable timeout, and custom middlewares.
+func createHTTPClient(token string, timeout time.Duration, middlewares ...Middleware) *http.Client {
 	cfg := DefaultRetryConfig()
 
 	var baseTransport http.RoundTripper = http.DefaultTransport
@@ -318,7 +331,23 @@ func createHTTPClient(token string, timeout time.Duration) *http.Client {
 		}
 	}
 
+	// Apply custom middlewares before the retry transport if you want retries to apply to them,
+	// or after if you want them to wrap the retries.
+	// Usually middlewares wrap the transport.
+	for _, mw := range middlewares {
+		if mw != nil {
+			transport = mw(transport)
+		}
+	}
+
 	transport = NewRetryTransport(cfg, transport)
+
+	// Apply custom middlewares
+	for _, mw := range middlewares {
+		if mw != nil {
+			transport = mw(transport)
+		}
+	}
 
 	return &http.Client{
 		Transport: transport,
@@ -333,7 +362,7 @@ func NewCustomClient(config NetworkConfig) (*Client, error) {
 		return nil, err
 	}
 
-	httpClient := createHTTPClient("", defaultHTTPTimeout)
+	httpClient := createHTTPClient("", defaultHTTPTimeout, nil)
 	horizonClient := &horizonclient.Client{
 		HorizonURL: config.HorizonURL,
 		HTTP:       httpClient,
@@ -435,15 +464,23 @@ func (c *Client) getTransactionAttempt(ctx context.Context, hash string) (txResp
 	if !c.isHealthy(c.HorizonURL) {
 		err := fmt.Errorf("circuit breaker open for %s", c.HorizonURL)
 		span.RecordError(err)
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(c.HorizonURL, string(c.Network), false, time.Since(startTime))
 		return nil, errors.WrapRPCConnectionFailed(err)
 	}
 
 	tx, err := c.Horizon.TransactionDetail(hash)
+	duration := time.Since(startTime)
 	if err != nil {
 		span.RecordError(err)
 		logger.Logger.Error("Failed to fetch transaction", "hash", hash, "error", err, "url", c.HorizonURL)
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(c.HorizonURL, string(c.Network), false, duration)
 		return nil, errors.WrapRPCConnectionFailed(err)
 	}
+
+	// Record successful remote node response
+	metrics.RecordRemoteNodeResponse(c.HorizonURL, string(c.Network), true, duration)
 
 	span.SetAttributes(
 		attribute.Int("envelope.size_bytes", len(tx.EnvelopeXdr)),
@@ -474,6 +511,13 @@ type GetLedgerEntriesRequest struct {
 	ID      int           `json:"id"`
 	Method  string        `json:"method"`
 	Params  []interface{} `json:"params"`
+}
+
+type LedgerEntryResult struct {
+	Key                string `json:"key"`
+	Xdr                string `json:"xdr"`
+	LastModifiedLedger int    `json:"lastModifiedLedgerSeq"`
+	LiveUntilLedger    int    `json:"liveUntilLedgerSeq"`
 }
 
 type GetLedgerEntriesResponse struct {
@@ -769,9 +813,12 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 
 	// Fail fast if circuit breaker is open for this Soroban endpoint.
 	if !c.isHealthy(targetURL) {
-		return nil, errors.WrapRPCConnectionFailed(
+		err := errors.WrapRPCConnectionFailed(
 			fmt.Errorf("circuit breaker open for %s", targetURL),
 		)
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, time.Since(startTime))
+		return nil, err
 	}
 
 	reqBody := GetLedgerEntriesRequest{
@@ -798,30 +845,44 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.getHTTPClient().Do(req)
+	duration := time.Since(startTime)
 	if err != nil {
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, duration)
 		return nil, errors.WrapRPCConnectionFailed(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusRequestEntityTooLarge {
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, duration)
 		return nil, errors.WrapRPCResponseTooLarge(targetURL)
 	}
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, duration)
 		return nil, errors.WrapUnmarshalFailed(err, "body read error")
 	}
 
 	var rpcResp GetLedgerEntriesResponse
 	if err := json.Unmarshal(respBytes, &rpcResp); err != nil {
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, duration)
 		return nil, errors.WrapUnmarshalFailed(err, string(respBytes))
 	}
 
 	if rpcResp.Error != nil {
+		// Record failed remote node response
+		metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), false, duration)
 		return nil, errors.WrapRPCError(targetURL, rpcResp.Error.Message, rpcResp.Error.Code)
 	}
 
-	entries = make(map[string]string)
+	// Record successful remote node response
+	metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), true, duration)
+
+	entries := make(map[string]string)
 	fetchedCount := 0
 	for _, entry := range rpcResp.Result.Entries {
 		entries[entry.Key] = entry.Xdr

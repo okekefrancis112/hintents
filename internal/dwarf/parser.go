@@ -489,7 +489,6 @@ func (p *Parser) FindLocalVarsAt(addr uint64) ([]LocalVar, error) {
 	// Filter variables that are in scope at this address
 	var inScope []LocalVar
 	for _, v := range subprogram.LocalVariables {
-		if addr >= uint64(v.StartLine) { // Simplified check
 		if addr >= uint64(v.StartLine) {
 			inScope = append(inScope, v)
 		}
