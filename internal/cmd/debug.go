@@ -485,6 +485,7 @@ Local WASM Replay Mode:
 					LedgerEntries:   ledgerEntries,
 					Timestamp:       ts,
 					ProtocolVersion: nil,
+					Profile:         ProfileFlag,
 				}
 
 				// Apply protocol version override if specified
@@ -533,6 +534,7 @@ Local WASM Replay Mode:
 						ResultMetaXdr: resp.ResultMetaXdr,
 						LedgerEntries: entries,
 						Timestamp:     ts,
+						Profile:       ProfileFlag,
 					}
 					applySimulationFeeMocks(primaryReq)
 					primaryResult, primaryErr = runner.Run(ctx, primaryReq)
@@ -573,6 +575,7 @@ Local WASM Replay Mode:
 						ResultMetaXdr: compareResp.ResultMetaXdr,
 						LedgerEntries: entries,
 						Timestamp:     ts,
+						Profile:       ProfileFlag,
 					}
 					applySimulationFeeMocks(compareReq)
 					compareResult, compareErr = runner.Run(ctx, compareReq)
@@ -603,6 +606,17 @@ Local WASM Replay Mode:
 
 		if lastSimResp == nil {
 			return errors.WrapSimulationLogicError("no simulation results generated")
+		}
+
+		// Save flamegraph SVG with dark-mode CSS when profiling is enabled
+		if ProfileFlag && lastSimResp.Flamegraph != "" {
+			svgContent := visualizer.InjectDarkMode(lastSimResp.Flamegraph)
+			svgFilename := txHash + ".flamegraph.svg"
+			if err := os.WriteFile(svgFilename, []byte(svgContent), 0644); err != nil {
+				fmt.Printf("%s Failed to write flamegraph: %v\n", visualizer.Warning(), err)
+			} else {
+				fmt.Printf("%s Flamegraph saved: %s\n", visualizer.Success(), svgFilename)
+			}
 		}
 
 		// Analysis: Error Suggestions (Heuristic-based)
