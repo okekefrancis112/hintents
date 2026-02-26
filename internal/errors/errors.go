@@ -8,6 +8,20 @@ import (
 	"fmt"
 )
 
+// formatBytes converts bytes to a human-readable string (e.g., "1.5 MB")
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
 // New is a proxy to the standard errors.New
 func New(text string) error {
 	return errors.New(text)
@@ -47,11 +61,13 @@ var (
 	ErrLedgerArchived       = errors.New("ledger has been archived")
 	ErrRateLimitExceeded    = errors.New("rate limit exceeded")
 	ErrRPCResponseTooLarge  = errors.New("RPC response too large")
+	ErrRPCRequestTooLarge   = errors.New("RPC request payload too large")
 	ErrConfigFailed         = errors.New("configuration error")
 	ErrNetworkNotFound      = errors.New("network not found")
 	ErrMissingLedgerKey     = errors.New("missing ledger key in footprint")
 	ErrWasmInvalid          = errors.New("invalid WASM file")
 	ErrSpecNotFound         = errors.New("contract spec not found")
+	ErrShellExit            = errors.New("exit")
 )
 
 type LedgerNotFoundError struct {
@@ -251,6 +267,20 @@ func WrapRPCResponseTooLarge(url string) error {
 	}
 }
 
+// WrapRPCRequestTooLarge returns an error when the JSON payload exceeds
+// the maximum allowed size (10MB) to prevent network submission.
+func WrapRPCRequestTooLarge(sizeBytes int64, maxSizeBytes int64) error {
+	return fmt.Errorf(
+		"%v: request payload size (%s) exceeds maximum allowed size (%s). "+
+			"This payload is too large to submit to the network. "+
+			"Consider reducing the amount of data being sent (e.g., fewer ledger entries, "+
+			"smaller transaction envelopes, or breaking the request into smaller chunks)",
+		ErrRPCRequestTooLarge,
+		formatBytes(sizeBytes),
+		formatBytes(maxSizeBytes),
+	)
+}
+
 func WrapMissingLedgerKey(key string) error {
 	return &MissingLedgerKeyError{Key: key}
 }
@@ -266,6 +296,7 @@ const (
 	CodeRPCAllFailed         ErstErrorCode = "RPC_ALL_ENDPOINTS_FAILED"
 	CodeRPCError             ErstErrorCode = "RPC_SERVER_ERROR"
 	CodeRPCResponseTooLarge  ErstErrorCode = "RPC_RESPONSE_TOO_LARGE"
+	CodeRPCRequestTooLarge   ErstErrorCode = "RPC_REQUEST_TOO_LARGE"
 	CodeRPCRateLimitExceeded ErstErrorCode = "RPC_RATE_LIMIT_EXCEEDED"
 	CodeRPCMarshalFailed     ErstErrorCode = "RPC_MARSHAL_FAILED"
 	CodeRPCUnmarshalFailed   ErstErrorCode = "RPC_UNMARSHAL_FAILED"
@@ -274,16 +305,41 @@ const (
 	CodeLedgerArchived       ErstErrorCode = "RPC_LEDGER_ARCHIVED"
 
 	// Simulator origin
-	CodeSimNotFound     ErstErrorCode = "SIM_BINARY_NOT_FOUND"
-	CodeSimCrash        ErstErrorCode = "SIM_PROCESS_CRASHED"
-	CodeSimExecFailed   ErstErrorCode = "SIM_EXECUTION_FAILED"
-	CodeSimLogicError   ErstErrorCode = "SIM_LOGIC_ERROR"
-	CodeSimProtoUnsup   ErstErrorCode = "SIM_PROTOCOL_UNSUPPORTED"
+	CodeSimNotFound            ErstErrorCode = "SIM_BINARY_NOT_FOUND"
+	CodeSimCrash               ErstErrorCode = "SIM_PROCESS_CRASHED"
+	CodeSimExecFailed          ErstErrorCode = "SIM_EXECUTION_FAILED"
+	CodeSimMemoryLimitExceeded ErstErrorCode = "ERR_MEMORY_LIMIT_EXCEEDED"
+	CodeSimLogicError          ErstErrorCode = "SIM_LOGIC_ERROR"
+	CodeSimProtoUnsup          ErstErrorCode = "SIM_PROTOCOL_UNSUPPORTED"
 
 	// Shared / general
 	CodeValidationFailed ErstErrorCode = "VALIDATION_FAILED"
 	CodeUnknown          ErstErrorCode = "UNKNOWN"
 )
+
+// codeToSentinel maps each ErstErrorCode to its corresponding sentinel error
+// so that errors.Is(erstErr, sentinel) works reliably.
+var codeToSentinel = map[ErstErrorCode]error{
+	CodeRPCConnectionFailed:    ErrRPCConnectionFailed,
+	CodeRPCTimeout:             ErrRPCTimeout,
+	CodeRPCAllFailed:           ErrAllRPCFailed,
+	CodeRPCError:               ErrRPCError,
+	CodeRPCResponseTooLarge:    ErrRPCResponseTooLarge,
+	CodeRPCRequestTooLarge:     ErrRPCRequestTooLarge,
+	CodeRPCRateLimitExceeded:   ErrRateLimitExceeded,
+	CodeRPCMarshalFailed:       ErrMarshalFailed,
+	CodeRPCUnmarshalFailed:     ErrUnmarshalFailed,
+	CodeTransactionNotFound:    ErrTransactionNotFound,
+	CodeLedgerNotFound:         ErrLedgerNotFound,
+	CodeLedgerArchived:         ErrLedgerArchived,
+	CodeSimNotFound:            ErrSimulatorNotFound,
+	CodeSimCrash:               ErrSimCrash,
+	CodeSimExecFailed:          ErrSimulationFailed,
+	CodeSimMemoryLimitExceeded: ErrSimulationFailed,
+	CodeSimLogicError:          ErrSimulationLogicError,
+	CodeSimProtoUnsup:          ErrProtocolUnsupported,
+	CodeValidationFailed:       ErrValidationFailed,
+}
 
 // ErstError is the unified error type returned at all RPC and Simulator boundaries.
 // It carries a stable ErstErrorCode for programmatic handling and preserves the
@@ -301,9 +357,20 @@ func (e *ErstError) Error() string {
 	return string(e.Code) + ": " + e.Message
 }
 
-// Unwrap allows errors.Is/As to traverse the chain if needed.
+// Is allows errors.Is to match an ErstError against its corresponding sentinel
+// error via the codeToSentinel mapping.
+func (e *ErstError) Is(target error) bool {
+	if sentinel, ok := codeToSentinel[e.Code]; ok {
+		return target == sentinel
+	}
+	return false
+}
+
+// Unwrap returns nil because Is() handles sentinel matching directly.
+// The previous implementation created a fresh errors.New() on every call,
+// which broke errors.Is chains.
 func (e *ErstError) Unwrap() error {
-	return errors.New(e.OriginalError)
+	return nil
 }
 
 // newErstError is the internal constructor.

@@ -6,7 +6,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -75,11 +74,18 @@ func runShell(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Initialize RPC client
-	var rpcClient *rpc.Client
+	opts := []rpc.ClientOption{rpc.WithNetwork(rpc.Network(shellNetworkFlag))}
+	if shellRPCToken != "" {
+		opts = append(opts, rpc.WithToken(shellRPCToken))
+	}
 	if shellRPCURLFlag != "" {
-		rpcClient = rpc.NewClientWithURL(shellRPCURLFlag, rpc.Network(shellNetworkFlag))
+		rpcClient = rpc.NewClientWithURLOption(shellRPCURLFlag, rpc.Network(shellNetworkFlag), shellRPCToken)
 	} else {
-		rpcClient = rpc.NewClient(rpc.Network(shellNetworkFlag))
+		var clientErr error
+		rpcClient, clientErr = rpc.NewClient(rpc.WithNetwork(rpc.Network(shellNetworkFlag)))
+		if clientErr != nil {
+			return fmt.Errorf("failed to create RPC client: %w", clientErr)
+		}
 	}
 
 	// Initialize simulator runner
@@ -119,7 +125,7 @@ func runShell(cmd *cobra.Command, args []string) error {
 
 		// Parse and execute command
 		if err := executeShellCommand(ctx, session, line); err != nil {
-			if err.Error() == "exit" {
+			if errors.Is(err, errors.ErrShellExit) {
 				break
 			}
 			fmt.Printf("Error: %v\n", err)
@@ -159,7 +165,7 @@ func executeShellCommand(ctx context.Context, session *shell.Session, line strin
 		return nil
 
 	case "exit", "quit":
-		return fmt.Errorf("exit")
+		return errors.ErrShellExit
 
 	case "invoke":
 		return handleInvoke(ctx, session, args)
