@@ -3,7 +3,7 @@
 
 //! Example demonstrating HSM integration for cryptographic operations.
 
-use crate::hsm::{SignerFactory, SignerConfig, SignerError};
+use crate::hsm::{SignerConfig, SignerError, SignerFactory};
 use std::env;
 
 /// Example of using the HSM integration
@@ -28,12 +28,12 @@ pub async fn example_hsm_usage() -> Result<(), SignerError> {
             let info = signer.signer_info();
             println!("  Type: {}", info.signer_type);
             println!("  Algorithm: {}", info.algorithm);
-            
+
             // Test signing
             let data = b"Hello, HSM world!";
             let signature = signer.sign(data).await?;
             println!("  Signature: {}", signature);
-            
+
             let public_key = signer.public_key().await?;
             println!("  Public key: {}", public_key);
         }
@@ -51,12 +51,12 @@ pub async fn example_hsm_usage() -> Result<(), SignerError> {
                 let info = signer.signer_info();
                 println!("  Type: {}", info.signer_type);
                 println!("  Algorithm: {}", info.algorithm);
-                
+
                 // Test signing
                 let data = b"Hello, HSM world!";
                 let signature = signer.sign(data).await?;
                 println!("  Signature: {}", signature);
-                
+
                 let public_key = signer.public_key().await?;
                 println!("  Public key: {}", public_key);
             }
@@ -74,10 +74,10 @@ pub async fn example_hsm_usage() -> Result<(), SignerError> {
         Ok((signer, pem_data)) => {
             println!("✓ New key pair generated");
             println!("  Private key (PEM):\n{}", pem_data);
-            
+
             let info = signer.signer_info();
             println!("  Signer info: {:?}", info);
-            
+
             // Test signing with the new key
             let data = b"Test message with new key";
             let signature = signer.sign(data).await?;
@@ -93,14 +93,14 @@ pub async fn example_hsm_usage() -> Result<(), SignerError> {
 /// Example of environment variable setup for HSM
 pub fn print_environment_setup() {
     println!("=== HSM Environment Setup ===\n");
-    
+
     println!("For software signer:");
     println!("  ERST_SIGNER_TYPE=software");
     println!("  ERST_SIGNER_ALGORITHM=ed25519");
     println!("  ERST_SOFTWARE_PRIVATE_KEY_PATH=/path/to/private_key.pem");
     println!("  # OR");
     println!("  ERST_SOFTWARE_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----...'\n");
-    
+
     println!("For PKCS#11 signer:");
     println!("  ERST_SIGNER_TYPE=pkcs11");
     println!("  ERST_SIGNER_ALGORITHM=ed25519");
@@ -115,7 +115,7 @@ pub fn print_environment_setup() {
     println!("  # OR");
     println!("  ERST_PKCS11_PIV_SLOT=9a");
     println!("  ERST_PKCS11_PUBLIC_KEY_PEM='-----BEGIN PUBLIC KEY-----...'\n");
-    
+
     println!("YubiKey PIV slot mapping:");
     println!("  9a -> Key ID 1 (PIV Authentication)");
     println!("  9c -> Key ID 2 (Digital Signature)");
@@ -133,14 +133,14 @@ mod tests {
     async fn test_example_hsm_usage() {
         // This test demonstrates the example usage
         // In practice, you'd need proper key files and HSM setup
-        
+
         // Test with a generated key
         let (signer, _pem) = crate::hsm::software::SoftwareSigner::generate().unwrap();
-        
+
         let data = b"Test message";
         let signature = signer.sign(data).await.unwrap();
         let public_key = signer.public_key().await.unwrap();
-        
+
         assert_eq!(signature.algorithm, "ed25519");
         assert_eq!(public_key.algorithm, "ed25519");
         assert!(!signature.bytes.is_empty());
