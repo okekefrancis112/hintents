@@ -14,7 +14,7 @@ type ExecutionState struct {
 	Step            int                    `json:"step"`
 	Timestamp       time.Time              `json:"timestamp"`
 	Operation       string                 `json:"operation"`
-	EventType       string                 `json:"event_type,omitempty"`
+	EventType       string                 `json:"event_type,omitempty"` // trap, contract_call, host_function, auth, or empty for inferred
 	ContractID      string                 `json:"contract_id,omitempty"`
 	Function        string                 `json:"function,omitempty"`
 	Arguments       []interface{}          `json:"arguments,omitempty"`

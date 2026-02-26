@@ -48,16 +48,17 @@ var (
 	compareNetworkFlag  string
 	verbose             bool
 	wasmPath            string
+	wasmOptimizeFlag    bool
 	args                []string
+	themeFlag           string
 	noCacheFlag         bool
 	demoMode            bool
 	watchFlag           bool
 	watchTimeoutFlag    int
-	mockBaseFeeFlag     uint32
-	mockGasPriceFlag    uint64
-	themeFlag           string
 	mockTimeFlag        int64
 	protocolVersionFlag uint32
+	mockBaseFeeFlag     uint32
+	mockGasPriceFlag    uint64
 )
 
 // DebugCommand holds dependencies for the debug command
@@ -127,6 +128,7 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return errors.WrapValidationError(fmt.Sprintf("failed to create client: %v", err))
 	}
+	registerCacheFlushHook()
 
 	fmt.Printf("Debugging transaction: %s\n", txHash)
 	fmt.Printf("Network: %s\n", networkFlag)
@@ -153,8 +155,9 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 }
 
 var debugCmd = &cobra.Command{
-	Use:   "debug <transaction-hash>",
-	Short: "Debug a failed Soroban transaction",
+	Use:     "debug <transaction-hash>",
+	GroupID: "core",
+	Short:   "Debug a failed Soroban transaction",
 	Long: `Fetch and simulate a Soroban transaction to debug failures and analyze execution.
 
 This command retrieves the transaction envelope from the Stellar network, runs it
@@ -258,7 +261,7 @@ Local WASM Replay Mode:
 
 		// Local WASM replay mode
 		if wasmPath != "" {
-			return runLocalWasmReplay()
+			return runLocalWasmReplay(cmd.Context())
 		}
 
 		// Network transaction replay mode
@@ -327,6 +330,7 @@ Local WASM Replay Mode:
 		if err != nil {
 			return errors.WrapValidationError(fmt.Sprintf("failed to create client: %v", err))
 		}
+		registerCacheFlushHook()
 
 		if horizonURL == "" {
 			// Extract horizon URL from valid client if not explicitly set
@@ -364,6 +368,10 @@ Local WASM Replay Mode:
 			}, nil)
 
 			if err != nil {
+				if IsCancellation(err) {
+					spinner.StopWithMessage("Interrupted. Stopping watch...")
+					return err
+				}
 				spinner.StopWithError("Failed to poll for transaction")
 				return errors.WrapSimulationLogicError(fmt.Sprintf("watch mode error: %v", err))
 			}
@@ -395,6 +403,8 @@ Local WASM Replay Mode:
 		if err != nil {
 			return errors.WrapSimulatorNotFound(err.Error())
 		}
+		registerRunnerCloseHook("debug-simulator-runner", runner)
+		defer func() { _ = runner.Close() }()
 
 		// Determine timestamps to simulate
 		timestamps := []int64{TimestampFlag}
@@ -458,7 +468,7 @@ Local WASM Replay Mode:
 				}
 				applySimulationFeeMocks(simReq)
 
-				simResp, err = runner.Run(simReq)
+				simResp, err = runner.Run(ctx, simReq)
 				if err != nil {
 					return errors.WrapSimulationFailed(err, "")
 				}
@@ -496,7 +506,7 @@ Local WASM Replay Mode:
 						Timestamp:     ts,
 					}
 					applySimulationFeeMocks(primaryReq)
-					primaryResult, primaryErr = runner.Run(primaryReq)
+					primaryResult, primaryErr = runner.Run(ctx, primaryReq)
 				}()
 
 				go func() {
@@ -536,7 +546,7 @@ Local WASM Replay Mode:
 						Timestamp:     ts,
 					}
 					applySimulationFeeMocks(compareReq)
-					compareResult, compareErr = runner.Run(compareReq)
+					compareResult, compareErr = runner.Run(ctx, compareReq)
 				}()
 
 				wg.Wait()
@@ -691,42 +701,55 @@ func runDemoMode(cmdArgs []string) error {
 	return nil
 }
 
-func runLocalWasmReplay() error {
+func runLocalWasmReplay(ctx context.Context) error {
 	fmt.Printf("%s  WARNING: Using Mock State (not mainnet data)\n", visualizer.Warning())
 	fmt.Println()
+	effectiveWasmPath := wasmPath
 
 	// Verify WASM file exists
-	if _, err := os.Stat(wasmPath); os.IsNotExist(err) {
+	if _, err := os.Stat(effectiveWasmPath); os.IsNotExist(err) {
 		return errors.WrapValidationError(fmt.Sprintf("WASM file not found: %s", wasmPath))
 	}
 
+	optimizedPath, report, cleanup, err := optimizeWasmFileIfRequested(effectiveWasmPath, wasmOptimizeFlag)
+	if err != nil {
+		return errors.WrapValidationError(fmt.Sprintf("failed to optimize WASM: %v", err))
+	}
+	defer cleanup()
+	effectiveWasmPath = optimizedPath
+
 	fmt.Printf("%s Local WASM Replay Mode\n", visualizer.Symbol("wrench"))
-	fmt.Printf("WASM File: %s\n", wasmPath)
+	fmt.Printf("WASM File: %s\n", effectiveWasmPath)
+	if wasmOptimizeFlag {
+		printOptimizationReport(report)
+	}
 	fmt.Printf("Arguments: %v\n", args)
 	fmt.Println()
 
 	// Check for LTO in the project that produced the WASM
-	checkLTOWarning(wasmPath)
+	checkLTOWarning(effectiveWasmPath)
 
 	// Create simulator runner
 	runner, err := simulator.NewRunner("", tracingEnabled)
 	if err != nil {
 		return errors.WrapSimulatorNotFound(err.Error())
 	}
+	registerRunnerCloseHook("local-wasm-simulator-runner", runner)
+	defer func() { _ = runner.Close() }()
 
 	// Create simulation request with local WASM
 	req := &simulator.SimulationRequest{
 		EnvelopeXdr:   "",  // Empty for local replay
 		ResultMetaXdr: "",  // Empty for local replay
 		LedgerEntries: nil, // Mock state will be generated
-		WasmPath:      &wasmPath,
+		WasmPath:      &effectiveWasmPath,
 		MockArgs:      &args,
 	}
 	applySimulationFeeMocks(req)
 
 	// Run simulation
 	fmt.Printf("%s Executing contract locally...\n", visualizer.Symbol("play"))
-	resp, err := runner.Run(req)
+	resp, err := runner.Run(ctx, req)
 	if err != nil {
 		fmt.Printf("%s Technical failure: %v\n", visualizer.Error(), err)
 		return err
@@ -743,7 +766,7 @@ func runLocalWasmReplay() error {
 		// Fallback to WAT disassembly if source mapping is unavailable but we have an offset
 		if resp.SourceLocation == "" && resp.WasmOffset != nil {
 			fmt.Println()
-			wasmBytes, err := os.ReadFile(wasmPath)
+			wasmBytes, err := os.ReadFile(effectiveWasmPath)
 			if err == nil {
 				fallbackMsg := wat.FormatFallback(wasmBytes, *resp.WasmOffset, 5)
 				fmt.Println(fallbackMsg)
@@ -1083,16 +1106,21 @@ func init() {
 	debugCmd.Flags().StringVar(&compareNetworkFlag, "compare-network", "", "Network to compare against (testnet, mainnet, futurenet)")
 	debugCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	debugCmd.Flags().StringVar(&wasmPath, "wasm", "", "Path to local WASM file for local replay (no network required)")
+	debugCmd.Flags().BoolVar(&wasmOptimizeFlag, "optimize", false, "Run dead-code elimination on local WASM before replay")
 	debugCmd.Flags().StringSliceVar(&args, "args", []string{}, "Mock arguments for local replay (JSON array of strings)")
+	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Output theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
 	debugCmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "Disable local ledger state caching")
 	debugCmd.Flags().BoolVar(&demoMode, "demo", false, "Print sample output (no network) - for testing color detection")
 	debugCmd.Flags().BoolVar(&watchFlag, "watch", false, "Poll for transaction on-chain before debugging")
 	debugCmd.Flags().IntVar(&watchTimeoutFlag, "watch-timeout", 30, "Timeout in seconds for watch mode")
+	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Override ledger timestamp (Unix epoch) for simulation")
+	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version for simulation")
 	debugCmd.Flags().Uint32Var(&mockBaseFeeFlag, "mock-base-fee", 0, "Override base fee (stroops) for local fee sufficiency checks")
 	debugCmd.Flags().Uint64Var(&mockGasPriceFlag, "mock-gas-price", 0, "Override gas price multiplier for local fee sufficiency checks")
-	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Color theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
-	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Override ledger close time (unix timestamp)")
-	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version for simulation")
+
+	_ = debugCmd.RegisterFlagCompletionFunc("network", completeNetworkFlag)
+	_ = debugCmd.RegisterFlagCompletionFunc("compare-network", completeNetworkFlag)
+	_ = debugCmd.RegisterFlagCompletionFunc("theme", completeThemeFlag)
 
 	rootCmd.AddCommand(debugCmd)
 }

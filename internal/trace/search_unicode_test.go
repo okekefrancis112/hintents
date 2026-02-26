@@ -107,9 +107,8 @@ func TestSearchUnicode_Mixed(t *testing.T) {
 
 	nodes := []*TraceNode{
 		{
-			ID:       "1",
-			Function: "transfer_资金",
-
+			ID:        "1",
+			Function:  "transfer_资金",
 			EventData: "Événement créé [DEPLOY]",
 		},
 	}
