@@ -20,6 +20,7 @@ func TestExporterCreation(t *testing.T) {
 
 	if exporter == nil {
 		t.Fatal("expected non-nil exporter")
+		return
 	}
 
 	if exporter.outputDir != tmpDir {
@@ -157,7 +158,17 @@ func TestFilenameGeneration(t *testing.T) {
 }
 
 func TestInvalidOutputDir(t *testing.T) {
-	invalidDir := "/root/invalid/path/that/cannot/be/created"
+	// Use a path that's invalid on both Unix and Windows
+	// On Unix, /dev/null is a device file, not a directory
+	// On Windows, NUL is a reserved device name that can't be a directory
+	var invalidDir string
+	if os.PathSeparator == '\\' {
+		// Windows: use a reserved device name
+		invalidDir = "NUL\\invalid\\path"
+	} else {
+		// Unix: use a path under /dev/null which can't be a directory
+		invalidDir = "/dev/null/invalid/path"
+	}
 
 	_, err := NewExporter(invalidDir)
 	if err == nil {

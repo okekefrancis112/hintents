@@ -1,3 +1,6 @@
+# Copyright (c) Hintents Authors.
+# SPDX-License-Identifier: Apache-2.0
+
 #!/bin/bash
 
 // Copyright (c) 2026 dotandev
@@ -7,7 +10,11 @@
 # Script to run unused code detection and cleanup
 # This script should be run after resolving the Go toolchain version mismatch
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
 
 echo "Running unused code detection..."
 

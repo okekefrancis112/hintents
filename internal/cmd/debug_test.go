@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -163,9 +164,14 @@ type MockRunner struct {
 	mock.Mock
 }
 
-func (m *MockRunner) Run(req *simulator.SimulationRequest) (*simulator.SimulationResponse, error) {
-	args := m.Called(req)
+func (m *MockRunner) Run(ctx context.Context, req *simulator.SimulationRequest) (*simulator.SimulationResponse, error) {
+	args := m.Called(ctx, req)
 	return args.Get(0).(*simulator.SimulationResponse), args.Error(1)
+}
+
+func (m *MockRunner) Close() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
 func TestDebugCommand_Setup(t *testing.T) {
@@ -179,6 +185,51 @@ func TestDebugCommand_Setup(t *testing.T) {
 
 	rpcURLFlag := debugCmd.Flags().Lookup("rpc-url")
 	assert.NotNil(t, rpcURLFlag)
+
+	mockBaseFee := debugCmd.Flags().Lookup("mock-base-fee")
+	assert.NotNil(t, mockBaseFee)
+
+	mockGasPrice := debugCmd.Flags().Lookup("mock-gas-price")
+	assert.NotNil(t, mockGasPrice)
+}
+
+func TestApplySimulationFeeMocks(t *testing.T) {
+	prevBaseFee := mockBaseFeeFlag
+	prevGasPrice := mockGasPriceFlag
+	t.Cleanup(func() {
+		mockBaseFeeFlag = prevBaseFee
+		mockGasPriceFlag = prevGasPrice
+	})
+
+	mockBaseFeeFlag = 321
+	mockGasPriceFlag = 99
+
+	req := &simulator.SimulationRequest{}
+	applySimulationFeeMocks(req)
+
+	if assert.NotNil(t, req.MockBaseFee) {
+		assert.Equal(t, uint32(321), *req.MockBaseFee)
+	}
+	if assert.NotNil(t, req.MockGasPrice) {
+		assert.Equal(t, uint64(99), *req.MockGasPrice)
+	}
+}
+
+func TestDeprecatedHostFunctionDetection(t *testing.T) {
+	name, ok := findDeprecatedHostFunction(`topic: Symbol("vec_unpack_to_linear_memory")`)
+	assert.True(t, ok)
+	assert.Equal(t, "vec_unpack_to_linear_memory", name)
+
+	_, ok = findDeprecatedHostFunction(`topic: Symbol("require_auth")`)
+	assert.False(t, ok)
+
+	event := simulator.DiagnosticEvent{
+		Topics: []string{`Symbol("fn_call")`},
+		Data:   `Symbol("bytes_copy_to_linear_memory")`,
+	}
+	name, ok = deprecatedHostFunctionInDiagnosticEvent(event)
+	assert.True(t, ok)
+	assert.Equal(t, "bytes_copy_to_linear_memory", name)
 }
 
 func TestMockRunner_ImplementsInterface(t *testing.T) {
@@ -197,14 +248,17 @@ func TestMockRunner_ImplementsInterface(t *testing.T) {
 		Events: []string{"test-event"},
 	}
 
-	mockRunner.On("Run", req).Return(expectedResp, nil)
+	ctx := context.Background()
+	mockRunner.On("Run", ctx, req).Return(expectedResp, nil)
+	mockRunner.On("Close").Return(nil)
 
 	// Call the mock
-	resp, err := mockRunner.Run(req)
+	resp, err := mockRunner.Run(ctx, req)
 
 	// Verify results
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResp, resp)
+	assert.NoError(t, mockRunner.Close())
 	mockRunner.AssertExpectations(t)
 }
 

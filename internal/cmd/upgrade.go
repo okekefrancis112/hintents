@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/dotandev/hintents/internal/simulator"
 	"github.com/spf13/cobra"
@@ -16,12 +17,14 @@ import (
 )
 
 var (
-	newWasmPath string
+	newWasmPath         string
+	upgradeOptimizeFlag bool
 )
 
 var upgradeCmd = &cobra.Command{
-	Use:   "simulate-upgrade <transaction-hash> --new-wasm <path>",
-	Short: "Simulate a transaction with upgraded contract code",
+	Use:     "simulate-upgrade <transaction-hash> --new-wasm <path>",
+	GroupID: "utility",
+	Short:   "Simulate a transaction with upgraded contract code",
 	Long: `Replay a transaction but replace the contract code with a new WASM file.
 This allows verifying if a planned upgrade will break existing functionality.
 
@@ -32,15 +35,23 @@ Example:
 		txHash := args[0]
 
 		if newWasmPath == "" {
-			return fmt.Errorf("flag --new-wasm is required")
+			return errors.WrapCliArgumentRequired("new-wasm")
 		}
 
 		// 1. Read New WASM
 		newWasmBytes, err := os.ReadFile(newWasmPath)
 		if err != nil {
-			return fmt.Errorf("failed to read WASM file: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to read WASM file: %v", err))
 		}
+		optimizedWasmBytes, report, err := optimizeWasmBytesIfRequested(newWasmBytes, upgradeOptimizeFlag)
+		if err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to optimize WASM: %v", err))
+		}
+		newWasmBytes = optimizedWasmBytes
 		fmt.Printf("Loaded new WASM code: %d bytes\n", len(newWasmBytes))
+		if upgradeOptimizeFlag {
+			printOptimizationReport(report)
+		}
 
 		// 2. Setup Client
 		opts := []rpc.ClientOption{
@@ -52,45 +63,48 @@ Example:
 
 		client, err := rpc.NewClient(opts...)
 		if err != nil {
-			return fmt.Errorf("failed to create client: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to create client: %v", err))
 		}
+		registerCacheFlushHook()
 
 		// 3. Fetch Transaction
 		fmt.Printf("Fetching transaction: %s from %s\n", txHash, networkFlag)
 		resp, err := client.GetTransaction(cmd.Context(), txHash)
 		if err != nil {
-			return fmt.Errorf("failed to fetch transaction: %w", err)
+			return errors.WrapRPCConnectionFailed(err)
 		}
 
 		// 4. Extract Keys & Fetch State
 		keys, err := extractLedgerKeys(resp.ResultMetaXdr)
 		if err != nil {
-			return fmt.Errorf("failed to extract ledger keys: %w", err)
+			return errors.WrapUnmarshalFailed(err, "result meta")
 		}
 
 		entries, err := client.GetLedgerEntries(cmd.Context(), keys)
 		if err != nil {
-			return fmt.Errorf("failed to fetch ledger entries: %w", err)
+			return errors.WrapRPCConnectionFailed(err)
 		}
 		fmt.Printf("Fetched %d ledger entries\n", len(entries))
 
 		// 5. Identify Contract ID and Inject New Code
 		contractID, err := getContractIDFromEnvelope(resp.EnvelopeXdr)
 		if err != nil {
-			return fmt.Errorf("failed to identify contract from transaction: %w", err)
+			return errors.WrapSimulationLogicError(fmt.Sprintf("failed to identify contract from transaction: %v", err))
 		}
 		fmt.Printf("Identified target contract: %x\n", *contractID)
 
 		if err := injectNewCode(entries, *contractID, newWasmBytes); err != nil {
-			return fmt.Errorf("failed to inject new code: %w", err)
+			return errors.WrapSimulationLogicError(fmt.Sprintf("failed to inject new code: %v", err))
 		}
 		fmt.Println("Injected new WASM code into simulation state.")
 
 		// 6. Run Simulation
 		runner, err := simulator.NewRunner("", false)
 		if err != nil {
-			return fmt.Errorf("failed to initialize simulator runner: %w", err)
+			return errors.WrapSimulatorNotFound(err.Error())
 		}
+		registerRunnerCloseHook("upgrade-simulator-runner", runner)
+		defer func() { _ = runner.Close() }()
 
 		simReq := &simulator.SimulationRequest{
 			EnvelopeXdr:   resp.EnvelopeXdr,
@@ -99,9 +113,9 @@ Example:
 		}
 
 		fmt.Println("Running simulation with upgraded code...")
-		result, err := runner.Run(simReq)
+		result, err := runner.Run(cmd.Context(), simReq)
 		if err != nil {
-			return fmt.Errorf("simulation failed: %w", err)
+			return errors.WrapSimulationFailed(err, "")
 		}
 
 		printSimulationResult("Upgraded Contract", result)
@@ -112,11 +126,14 @@ Example:
 
 func init() {
 	upgradeCmd.Flags().StringVar(&newWasmPath, "new-wasm", "", "Path to the new WASM file")
+	upgradeCmd.Flags().BoolVar(&upgradeOptimizeFlag, "optimize", false, "Run dead-code elimination on the new WASM before simulation")
 	// Reuse network flags from debug.go if possible, but they are var blocks there.
 	// Since they are in the same package, we can reuse the variables 'networkFlag' and 'rpcURLFlag'
 	// BUT we need to register flags for THIS command too.
 	upgradeCmd.Flags().StringVarP(&networkFlag, "network", "n", string(rpc.Mainnet), "Stellar network to use")
 	upgradeCmd.Flags().StringVar(&rpcURLFlag, "rpc-url", "", "Custom Horizon RPC URL")
+
+	_ = upgradeCmd.RegisterFlagCompletionFunc("network", completeNetworkFlag)
 
 	rootCmd.AddCommand(upgradeCmd)
 }
@@ -152,7 +169,7 @@ func getContractIDFromEnvelope(envelopeXdr string) (*xdr.Hash, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no InvokeContract operation found in transaction")
+	return nil, errors.WrapSimulationLogicError("no InvokeContract operation found in transaction")
 }
 
 func injectNewCode(entries map[string]string, contractID xdr.Hash, code []byte) error {

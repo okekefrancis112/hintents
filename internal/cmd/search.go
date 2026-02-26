@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/dotandev/hintents/internal/db"
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -18,8 +19,9 @@ var (
 )
 
 var searchCmd = &cobra.Command{
-	Use:   "search",
-	Short: "Search through saved debugging sessions",
+	Use:     "search",
+	GroupID: "management",
+	Short:   "Search through saved debugging sessions",
 	Long: `Search through the history of debugging sessions to find past transactions,
 errors, or events. Supports regex patterns for flexible matching.
 
@@ -45,7 +47,7 @@ Results are ordered by timestamp (most recent first) and limited by --limit flag
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := db.InitDB()
 		if err != nil {
-			return fmt.Errorf("Error: failed to initialize session database: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to initialize session database: %v", err))
 		}
 
 		params := db.SearchParams{
@@ -57,7 +59,7 @@ Results are ordered by timestamp (most recent first) and limited by --limit flag
 
 		sessions, err := store.SearchSessions(params)
 		if err != nil {
-			return fmt.Errorf("Error: search failed: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("search failed: %v", err))
 		}
 
 		if len(sessions) == 0 {
