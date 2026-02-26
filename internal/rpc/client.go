@@ -97,6 +97,17 @@ var (
 	}
 )
 
+// Middleware defines a function that wraps an http.RoundTripper
+type Middleware func(http.RoundTripper) http.RoundTripper
+
+// RoundTripperFunc is a helper to implement http.RoundTripper with a function
+type RoundTripperFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper
+func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // Client handles interactions with the Stellar Network
 type Client struct {
 	Horizon         horizonclient.ClientInterface
@@ -113,6 +124,7 @@ type Client struct {
 	methodTelemetry MethodTelemetry
 	failures        map[string]int
 	lastFailure     map[string]time.Time
+	middlewares     []Middleware
 }
 
 // NodeFailure records a failure for a specific RPC URL
@@ -279,7 +291,7 @@ func (c *Client) rotateURL() bool {
 	c.SorobanURL = c.HorizonURL
 	httpClient := c.httpClient
 	if httpClient == nil {
-		httpClient = createHTTPClient(c.token, defaultHTTPTimeout)
+		httpClient = createHTTPClient(c.token, defaultHTTPTimeout, c.middlewares...)
 	}
 	c.Horizon = &horizonclient.Client{
 		HorizonURL: c.HorizonURL,
@@ -305,8 +317,8 @@ func (c *Client) startMethodTimer(ctx context.Context, method string, attributes
 	return c.methodTelemetry.StartMethodTimer(ctx, method, attributes)
 }
 
-// createHTTPClient creates an HTTP client with optional authentication and a configurable timeout.
-func createHTTPClient(token string, timeout time.Duration) *http.Client {
+// createHTTPClient creates an HTTP client with optional authentication, a configurable timeout, and custom middlewares.
+func createHTTPClient(token string, timeout time.Duration, middlewares ...Middleware) *http.Client {
 	cfg := DefaultRetryConfig()
 
 	var baseTransport http.RoundTripper = http.DefaultTransport
@@ -319,7 +331,23 @@ func createHTTPClient(token string, timeout time.Duration) *http.Client {
 		}
 	}
 
+	// Apply custom middlewares before the retry transport if you want retries to apply to them,
+	// or after if you want them to wrap the retries.
+	// Usually middlewares wrap the transport.
+	for _, mw := range middlewares {
+		if mw != nil {
+			transport = mw(transport)
+		}
+	}
+
 	transport = NewRetryTransport(cfg, transport)
+
+	// Apply custom middlewares
+	for _, mw := range middlewares {
+		if mw != nil {
+			transport = mw(transport)
+		}
+	}
 
 	return &http.Client{
 		Transport: transport,
@@ -334,7 +362,7 @@ func NewCustomClient(config NetworkConfig) (*Client, error) {
 		return nil, err
 	}
 
-	httpClient := createHTTPClient("", defaultHTTPTimeout)
+	httpClient := createHTTPClient("", defaultHTTPTimeout, nil)
 	horizonClient := &horizonclient.Client{
 		HorizonURL: config.HorizonURL,
 		HTTP:       httpClient,
@@ -483,6 +511,13 @@ type GetLedgerEntriesRequest struct {
 	ID      int           `json:"id"`
 	Method  string        `json:"method"`
 	Params  []interface{} `json:"params"`
+}
+
+type LedgerEntryResult struct {
+	Key                string `json:"key"`
+	Xdr                string `json:"xdr"`
+	LastModifiedLedger int    `json:"lastModifiedLedgerSeq"`
+	LiveUntilLedger    int    `json:"liveUntilLedgerSeq"`
 }
 
 type GetLedgerEntriesResponse struct {
