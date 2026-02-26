@@ -4,18 +4,15 @@
 #![allow(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 
 mod config;
-mod gas_optimizer;
 mod runner;
-mod stack_trace;
-mod types;
 mod vm;
 mod wasm;
 
-use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
-use crate::stack_trace::WasmStackTrace;
-use crate::types::*;
 use base64::Engine as _;
+use simulator::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
 use simulator::source_mapper::SourceMapper;
+use simulator::stack_trace::WasmStackTrace;
+use simulator::types::*;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
     xdr::{Operation, OperationBody},

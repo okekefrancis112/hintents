@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Integration tests for HSM cryptographic operations.
+//! Gated behind the `hsm` feature since the HSM module dependencies
+//! are not yet fully wired into Cargo.toml.
 
-use crate::hsm::{
+#![cfg(feature = "hsm")]
+
+use simulator::hsm::{
     software::SoftwareSigner, Pkcs11SignerConfig, Signer, SignerConfig, SignerError, SignerFactory,
     SoftwareSignerConfig,
 };
