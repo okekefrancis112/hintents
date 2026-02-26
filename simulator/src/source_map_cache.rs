@@ -32,19 +32,31 @@ mod flock {
     /// Acquires a shared (read) lock on `file`, blocking until it succeeds.
     pub fn lock_shared(file: &File) -> Result<(), String> {
         let rc = unsafe { flock(file.as_raw_fd(), libc::LOCK_SH) };
-        if rc == 0 { Ok(()) } else { Err(format!("flock(LOCK_SH) failed: errno {}", rc)) }
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(format!("flock(LOCK_SH) failed: errno {}", rc))
+        }
     }
 
     /// Acquires an exclusive (write) lock on `file`, blocking until it succeeds.
     pub fn lock_exclusive(file: &File) -> Result<(), String> {
         let rc = unsafe { flock(file.as_raw_fd(), libc::LOCK_EX) };
-        if rc == 0 { Ok(()) } else { Err(format!("flock(LOCK_EX) failed: errno {}", rc)) }
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(format!("flock(LOCK_EX) failed: errno {}", rc))
+        }
     }
 
     /// Releases any lock held on `file`.
     pub fn unlock(file: &File) -> Result<(), String> {
         let rc = unsafe { flock(file.as_raw_fd(), libc::LOCK_UN) };
-        if rc == 0 { Ok(()) } else { Err(format!("flock(LOCK_UN) failed: errno {}", rc)) }
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(format!("flock(LOCK_UN) failed: errno {}", rc))
+        }
     }
 }
 
@@ -54,9 +66,15 @@ mod flock {
     // On non-Unix platforms we fall back to no-op locks. The race risk on
     // Windows test environments is accepted until a platform-specific
     // implementation is added.
-    pub fn lock_shared(_: &File) -> Result<(), String> { Ok(()) }
-    pub fn lock_exclusive(_: &File) -> Result<(), String> { Ok(()) }
-    pub fn unlock(_: &File) -> Result<(), String> { Ok(()) }
+    pub fn lock_shared(_: &File) -> Result<(), String> {
+        Ok(())
+    }
+    pub fn lock_exclusive(_: &File) -> Result<(), String> {
+        Ok(())
+    }
+    pub fn unlock(_: &File) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Default cache directory name
