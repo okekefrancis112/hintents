@@ -116,20 +116,6 @@ func parseWASM(data []byte) (*Parser, error) {
 	// Try to find debug sections in WASM
 	sections := parseWASMSections(data)
 	
-	var dwarfData *dwarf.Data
-	var err error
-	
-	// Look for .debug_info section
-	if infoSection, ok := sections[".debug_info"]; ok {
-		abbrevSection := sections[".debug_abbrev"]
-		lineSection := sections[".debug_line"]
-		strSection := sections[".debug_str"]
-		dwarfData, err = dwarf.New(abbrevSection, nil, nil, infoSection, lineSection, nil, nil, strSection)
-		if err != nil {
-			// Fall back without optional sections
-			dwarfData, err = dwarf.New(abbrevSection, nil, nil, infoSection, nil, nil, nil, nil)
-		}
-
 	infoSec, ok := sections[".debug_info"]
 	if !ok || len(infoSec) == 0 {
 		return nil, ErrNoDebugInfo
@@ -499,7 +485,6 @@ func (p *Parser) FindLocalVarsAt(addr uint64) ([]LocalVar, error) {
 	// Filter variables that are in scope at this address
 	var inScope []LocalVar
 	for _, v := range subprogram.LocalVariables {
-		if addr >= uint64(v.StartLine) { // Simplified check
 		if addr >= uint64(v.StartLine) {
 			inScope = append(inScope, v)
 		}

@@ -271,7 +271,9 @@ Local WASM Replay Mode:
 	},
 	RunE: func(cmd *cobra.Command, cmdArgs []string) error {
 		if verbose {
-			logger.SetLevel(slog.LevelInfo)
+			logger.SetLevel(slog.LevelDebug)
+		} else if envLevel := os.Getenv("ERST_LOG_LEVEL"); envLevel != "" {
+			logger.SetLevel(logger.ParseLogLevel(envLevel))
 		} else {
 			logger.SetLevel(slog.LevelWarn)
 		}

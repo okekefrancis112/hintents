@@ -56,12 +56,6 @@ type InlinedFrame struct {
 	// InlinedAt is the location inside the inlined function's own source
 	// where execution was when the fault occurred.
 	InlinedAt dwarf.SourceLocation
-	Type           TrapType              // Type of trap
-	Message        string                // Error message
-	SourceLocation *dwarf.SourceLocation // Source location if available
-	LocalVars      []LocalVarInfo        // Local variables at trap point
-	Function       string                // Function where trap occurred
-	CallStack      []string              // Call stack at trap point
 }
 
 // LocalVarInfo represents a local variable with its value at trap time
