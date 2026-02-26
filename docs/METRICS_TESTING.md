@@ -30,12 +30,12 @@ ok      github.com/dotandev/hintents/internal/metrics   0.123s
 ```
 
 **What's tested:**
-- ✓ Successful response recording updates timestamp
-- ✓ Error response recording does NOT update timestamp
-- ✓ Multiple nodes tracked independently
-- ✓ Counters increment correctly
-- ✓ Histograms record duration data
-- ✓ Metric labels are correct
+- [OK] Successful response recording updates timestamp
+- [OK] Error response recording does NOT update timestamp
+- [OK] Multiple nodes tracked independently
+- [OK] Counters increment correctly
+- [OK] Histograms record duration data
+- [OK] Metric labels are correct
 
 ### 2. Integration Tests
 
@@ -59,11 +59,11 @@ ok      github.com/dotandev/hintents/internal/metrics   2.234s
 ```
 
 **What's tested:**
-- ✓ Metrics exposed via HTTP endpoint
-- ✓ Prometheus format is correct
-- ✓ Staleness detection works (timestamp doesn't update on errors)
-- ✓ Multiple nodes tracked separately in HTTP output
-- ✓ Metric values match expected counts
+- [OK] Metrics exposed via HTTP endpoint
+- [OK] Prometheus format is correct
+- [OK] Staleness detection works (timestamp doesn't update on errors)
+- [OK] Multiple nodes tracked separately in HTTP output
+- [OK] Metric values match expected counts
 
 ### 3. Manual Testing
 
@@ -341,12 +341,12 @@ Test metrics display correctly in Grafana.
 Ensure metrics don't break existing functionality.
 
 **Test checklist:**
-- ✓ Daemon starts successfully with metrics enabled
-- ✓ Simulations run normally with metrics recording
-- ✓ No performance degradation in simulation execution
-- ✓ No memory leaks from metric recording
-- ✓ Existing endpoints (/health, /rpc) still work
-- ✓ Logs don't show metric-related errors
+- [OK] Daemon starts successfully with metrics enabled
+- [OK] Simulations run normally with metrics recording
+- [OK] No performance degradation in simulation execution
+- [OK] No memory leaks from metric recording
+- [OK] Existing endpoints (/health, /rpc) still work
+- [OK] Logs don't show metric-related errors
 
 ### 9. Error Handling Testing
 
@@ -363,11 +363,11 @@ Test metrics handle errors gracefully.
 Verify documentation is accurate.
 
 **Test checklist:**
-- ✓ All example queries work in Prometheus
-- ✓ Alert rules fire as expected
-- ✓ Grafana panels display correctly
-- ✓ Verification scripts run successfully
-- ✓ Code examples compile and run
+- [OK] All example queries work in Prometheus
+- [OK] Alert rules fire as expected
+- [OK] Grafana panels display correctly
+- [OK] Verification scripts run successfully
+- [OK] Code examples compile and run
 
 ## Automated Test Suite
 
@@ -433,12 +433,12 @@ go tool cover -html=coverage.out
 ## Success Criteria
 
 All tests pass when:
-- ✓ Unit tests pass (100%)
-- ✓ Integration tests pass (100%)
-- ✓ Manual verification succeeds
-- ✓ Prometheus successfully scrapes metrics
-- ✓ Alerts fire correctly
-- ✓ Grafana displays metrics
-- ✓ No performance degradation
-- ✓ No memory leaks
-- ✓ Documentation is accurate
+- [OK] Unit tests pass (100%)
+- [OK] Integration tests pass (100%)
+- [OK] Manual verification succeeds
+- [OK] Prometheus successfully scrapes metrics
+- [OK] Alerts fire correctly
+- [OK] Grafana displays metrics
+- [OK] No performance degradation
+- [OK] No memory leaks
+- [OK] Documentation is accurate

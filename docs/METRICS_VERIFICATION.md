@@ -210,9 +210,9 @@ echo
 echo "1. Checking daemon health..."
 HEALTH=$(curl -s "${DAEMON_URL}/health")
 if echo "$HEALTH" | grep -q "ok"; then
-    echo "✓ Daemon is healthy"
+    echo "[OK] Daemon is healthy"
 else
-    echo "✗ Daemon is not responding"
+    echo "[FAIL] Daemon is not responding"
     exit 1
 fi
 echo
@@ -221,9 +221,9 @@ echo
 echo "2. Checking metrics endpoint..."
 METRICS=$(curl -s "$METRICS_URL")
 if [ -n "$METRICS" ]; then
-    echo "✓ Metrics endpoint is accessible"
+    echo "[OK] Metrics endpoint is accessible"
 else
-    echo "✗ Metrics endpoint is not responding"
+    echo "[FAIL] Metrics endpoint is not responding"
     exit 1
 fi
 echo
@@ -232,9 +232,9 @@ echo
 echo "3. Checking metric definitions..."
 for metric in "remote_node_last_response_timestamp_seconds" "remote_node_response_total" "remote_node_response_duration_seconds" "simulation_execution_total"; do
     if echo "$METRICS" | grep -q "$metric"; then
-        echo "✓ Found metric: $metric"
+        echo "[OK] Found metric: $metric"
     else
-        echo "✗ Missing metric: $metric"
+        echo "[FAIL] Missing metric: $metric"
     fi
 done
 echo
@@ -243,7 +243,7 @@ echo
 echo "4. Checking for metric data..."
 DATA_COUNT=$(echo "$METRICS" | grep -v '^#' | grep 'remote_node' | wc -l)
 if [ "$DATA_COUNT" -gt 0 ]; then
-    echo "✓ Found $DATA_COUNT metric data points"
+    echo "[OK] Found $DATA_COUNT metric data points"
     echo
     echo "Sample metrics:"
     echo "$METRICS" | grep 'remote_node_last_response_timestamp_seconds{' | head -3
@@ -264,11 +264,11 @@ if [ -n "$TIMESTAMPS" ]; then
         STALENESS=$((CURRENT_TIME - METRIC_TIME))
         
         if [ "$STALENESS" -lt 60 ]; then
-            echo "✓ $NODE: ${STALENESS}s (fresh)"
+            echo "[OK] $NODE: ${STALENESS}s (fresh)"
         elif [ "$STALENESS" -lt 300 ]; then
             echo "⚠ $NODE: ${STALENESS}s (getting stale)"
         else
-            echo "✗ $NODE: ${STALENESS}s (STALE)"
+            echo "[FAIL] $NODE: ${STALENESS}s (STALE)"
         fi
     done
 else
@@ -290,13 +290,13 @@ chmod +x verify_metrics.sh
 
 After running simulations, you should see:
 
-1. ✓ All metric definitions present
-2. ✓ Timestamp metrics updating on successful responses
-3. ✓ Timestamp metrics NOT updating on error responses
-4. ✓ Counter metrics incrementing correctly
-5. ✓ Histogram buckets populating with latency data
-6. ✓ Staleness increasing when no new responses occur
-7. ✓ Multiple nodes tracked separately
+1. [OK] All metric definitions present
+2. [OK] Timestamp metrics updating on successful responses
+3. [OK] Timestamp metrics NOT updating on error responses
+4. [OK] Counter metrics incrementing correctly
+5. [OK] Histogram buckets populating with latency data
+6. [OK] Staleness increasing when no new responses occur
+7. [OK] Multiple nodes tracked separately
 
 ## Troubleshooting
 
