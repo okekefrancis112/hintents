@@ -21,6 +21,7 @@ func TestVerifyLedgerEntryHash_ValidKey(t *testing.T) {
 		0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
 		0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
 	})
+	contractID := xdr.ContractId(contractIDHash)
 
 	contractAddr := xdr.ScAddress{
 		Type:       xdr.ScAddressTypeScAddressTypeContract,
@@ -28,10 +29,6 @@ func TestVerifyLedgerEntryHash_ValidKey(t *testing.T) {
 	}
 
 	sym := xdr.ScSymbol("COUNTER")
-	keyVal := xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &sym,
-	symbol := xdr.ScSymbol("COUNTER")
 	keyVal := xdr.ScVal{
 		Type: xdr.ScValTypeScvSymbol,
 		Sym:  &sym,
@@ -215,10 +212,6 @@ func createTestLedgerKey(t *testing.T, seed int) string {
 	}
 
 	sym := xdr.ScSymbol("COUNTER")
-	keyVal := xdr.ScVal{
-		Type: xdr.ScValTypeScvSymbol,
-		Sym:  &sym,
-	symbol := xdr.ScSymbol("COUNTER")
 	keyVal := xdr.ScVal{
 		Type: xdr.ScValTypeScvSymbol,
 		Sym:  &sym,
