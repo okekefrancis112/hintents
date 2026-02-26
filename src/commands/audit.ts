@@ -89,6 +89,10 @@ export function registerAuditCommands(program: Command): void {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[FAIL] audit render failed: ${msg}`);
+      }
+    });
+
+  program
     .command('audit:verify')
     .description('Verify an audit log signature locally (offline verification)')
     .option('--payload <json>', 'JSON string of the audit trace')
