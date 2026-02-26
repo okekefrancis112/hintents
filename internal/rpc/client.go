@@ -131,6 +131,15 @@ func (e *AllNodesFailedError) Error() string {
 	return fmt.Sprintf("all RPC endpoints failed: [%s]", strings.Join(reasons, ", "))
 }
 
+// Unwrap returns all underlying failure reasons so errors.Is/As can traverse them.
+func (e *AllNodesFailedError) Unwrap() []error {
+	errs := make([]error, len(e.Failures))
+	for i, f := range e.Failures {
+		errs[i] = f.Reason
+	}
+	return errs
+}
+
 // isHealthy checks if an endpoint is currently healthy or if circuit is open.
 // This is a best-effort check — there is an intentional TOCTOU window between
 // this call and the subsequent http.Do; no lock is held across both operations
@@ -234,6 +243,7 @@ func (c *Client) rotateURL() bool {
 	}
 
 	c.HorizonURL = c.AltURLs[c.currIndex]
+	c.SorobanURL = c.AltURLs[c.currIndex]
 	httpClient := c.httpClient
 	if httpClient == nil {
 		httpClient = createHTTPClient(c.token, defaultHTTPTimeout)

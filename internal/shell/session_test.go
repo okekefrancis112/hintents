@@ -204,7 +204,9 @@ func TestUpdateLedgerState(t *testing.T) {
 	session := NewSession(runner, rpcClient, rpc.Testnet)
 
 	initialSequence := session.ledgerSequence
-	initialTimestamp := session.timestamp
+
+	// Set timestamp to a known old value so the update is always detectable.
+	session.timestamp = 1000
 
 	resp := &simulator.SimulationResponse{
 		Status: "success",
@@ -218,7 +220,7 @@ func TestUpdateLedgerState(t *testing.T) {
 	}
 
 	// Verify timestamp updated
-	if session.timestamp <= initialTimestamp {
+	if session.timestamp <= 1000 {
 		t.Errorf("Expected timestamp to be updated")
 	}
 }

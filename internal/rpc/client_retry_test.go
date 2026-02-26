@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func newRetryHTTPClient() *http.Client {
@@ -70,6 +72,17 @@ func TestSimulateTransactionRetriesOnRateLimit(t *testing.T) {
 }
 
 func TestGetLedgerEntriesRetriesOnRateLimit(t *testing.T) {
+	// Build a valid base64-encoded XDR LedgerKey so post-fetch verification passes.
+	accountID := xdr.MustAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H")
+	testKey := xdr.LedgerKey{
+		Type:    xdr.LedgerEntryTypeAccount,
+		Account: &xdr.LedgerKeyAccount{AccountId: accountID},
+	}
+	encodedKey, err := EncodeLedgerKey(testKey)
+	if err != nil {
+		t.Fatalf("failed to encode test key: %v", err)
+	}
+
 	var calls int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +97,8 @@ func TestGetLedgerEntriesRetriesOnRateLimit(t *testing.T) {
 			ID:      1,
 		}
 		resp.Result.Entries = []LedgerEntryResult{{
-			Key: "AAA",
-			Xdr: "BBB",
+			Key: encodedKey,
+			Xdr: "AAAA",
 		}}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
@@ -96,17 +109,18 @@ func TestGetLedgerEntriesRetriesOnRateLimit(t *testing.T) {
 		WithHorizonURL(server.URL),
 		WithSorobanURL(server.URL),
 		WithHTTPClient(newRetryHTTPClient()),
+		WithCacheEnabled(false),
 	)
 	if err != nil {
 		t.Fatalf("failed to build client: %v", err)
 	}
 
-	entries, err := client.GetLedgerEntries(context.Background(), []string{"AAA"})
+	entries, err := client.GetLedgerEntries(context.Background(), []string{encodedKey})
 	if err != nil {
 		t.Fatalf("expected retry to succeed, got error: %v", err)
 	}
 
-	if entries["AAA"] != "BBB" {
+	if entries[encodedKey] != "AAAA" {
 		t.Fatalf("unexpected ledger entry: %v", entries)
 	}
 

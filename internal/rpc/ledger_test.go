@@ -331,7 +331,7 @@ func TestGetLedgerHeader_Success(t *testing.T) {
 		}, nil
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx := context.Background()
 
 	header, err := client.GetLedgerHeader(ctx, expectedSequence)
@@ -372,15 +372,15 @@ func TestGetLedgerHeader_NotFound(t *testing.T) {
 		}
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx := context.Background()
 
 	_, err := client.GetLedgerHeader(ctx, 999999999)
 	require.Error(t, err)
 	assert.True(t, IsLedgerNotFound(err), "should be ledger not found error")
 
-	notFoundErr, ok := err.(*errors.LedgerNotFoundError)
-	require.True(t, ok)
+	var notFoundErr *errors.LedgerNotFoundError
+	require.True(t, errors.As(err, &notFoundErr))
 	assert.Equal(t, uint32(999999999), notFoundErr.Sequence)
 	assert.Contains(t, notFoundErr.Message, "not found")
 }
@@ -402,15 +402,15 @@ func TestGetLedgerHeader_Archived(t *testing.T) {
 		}
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx := context.Background()
 
 	_, err := client.GetLedgerHeader(ctx, 1)
 	require.Error(t, err)
 	assert.True(t, IsLedgerArchived(err), "should be ledger archived error")
 
-	archivedErr, ok := err.(*errors.LedgerArchivedError)
-	require.True(t, ok)
+	var archivedErr *errors.LedgerArchivedError
+	require.True(t, errors.As(err, &archivedErr))
 	assert.Equal(t, uint32(1), archivedErr.Sequence)
 	assert.Contains(t, archivedErr.Message, "archived")
 }
@@ -432,15 +432,15 @@ func TestGetLedgerHeader_RateLimit(t *testing.T) {
 		}
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx := context.Background()
 
 	_, err := client.GetLedgerHeader(ctx, 12345)
 	require.Error(t, err)
 	assert.True(t, IsRateLimitError(err), "should be rate limit error")
 
-	rateLimitErr, ok := err.(*errors.RateLimitError)
-	require.True(t, ok)
+	var rateLimitErr *errors.RateLimitError
+	require.True(t, errors.As(err, &rateLimitErr))
 	assert.Contains(t, rateLimitErr.Message, "rate limit")
 }
 
@@ -462,7 +462,7 @@ func TestGetLedgerHeader_Timeout(t *testing.T) {
 		}
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	testCtx = ctx
@@ -483,7 +483,7 @@ func TestGetLedgerHeader_GenericError(t *testing.T) {
 		return hProtocol.Ledger{}, errors.New("network error")
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 	ctx := context.Background()
 
 	_, err := client.GetLedgerHeader(ctx, 12345)
@@ -602,7 +602,7 @@ func TestGetLedgerHeader_DifferentNetworks(t *testing.T) {
 				}, nil
 			}
 
-			client := &Client{Horizon: mock, Network: network}
+			client := &Client{Horizon: mock, Network: network, HorizonURL: "test", AltURLs: []string{"test"}}
 			ctx := context.Background()
 
 			header, err := client.GetLedgerHeader(ctx, 12345)
@@ -628,7 +628,7 @@ func TestGetLedgerHeader_ContextWithDeadline(t *testing.T) {
 		}, nil
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 
 	// Create context with deadline
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -654,7 +654,7 @@ func TestGetLedgerHeader_ContextWithoutDeadline(t *testing.T) {
 		}, nil
 	}
 
-	client := &Client{Horizon: mock, Network: Testnet}
+	client := &Client{Horizon: mock, Network: Testnet, HorizonURL: "test", AltURLs: []string{"test"}}
 
 	// Create context without deadline
 	ctx := context.Background()
