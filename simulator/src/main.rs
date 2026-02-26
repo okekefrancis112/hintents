@@ -792,6 +792,89 @@ fn main() {
                     None
                 };
 
+// Capture categorized events for analyzer
+            let categorized_events = match host.get_events() {
+                Ok(evs) => categorize_events(&evs),
+                Err(_) => vec![],
+            };
+
+            let mut final_logs = vec![
+                format!("Host Initialized with Budget: {:?}", budget),
+                format!("Loaded {} Ledger Entries", loaded_entries_count),
+                format!("Captured {} diagnostic events", diagnostic_events.len()),
+                format!("CPU Instructions Used: {}", cpu_insns),
+                format!("Memory Bytes Used: {}", mem_bytes),
+            ];
+            for log in exec_logs {
+                final_logs.push(log.to_string());
+            }
+
+            // Heuristic to ignore Rust stdlib panic wrappers and find the actual source point
+            let mut user_panic_point = None;
+            for event in &diagnostic_events {
+                let mut combined_text = event.data.clone();
+                for topic in &event.topics {
+                    combined_text.push_str(" ");
+                    combined_text.push_str(topic);
+                }
+
+                if combined_text.contains("panicked")
+                    || combined_text.contains("Error")
+                    || combined_text.contains("Trap")
+                {
+                    // Ignore known Rust stdlib wrappers commonly seen in Backtrace/Diagnostic events
+                    if combined_text.contains("core/src/panicking.rs")
+                        || combined_text.contains("core::panicking")
+                        || combined_text.contains("rust_begin_unwind")
+                        || combined_text.contains("std::rt::lang_start")
+                        || combined_text.contains("compiler_builtins")
+                        || combined_text.contains("rustc_std_workspace")
+                    {
+                        continue;
+                    }
+
+                    // Look for common user paths (like src/lib.rs, etc)
+                    if combined_text.contains(".rs") && !combined_text.contains("soroban-env-host")
+                    {
+                        user_panic_point = Some(combined_text.replace("\"", ""));
+                        // Break after finding the first valid panic point so we don't overwrite it with deeper arbitrary ones
+                        break;
+                    }
+                }
+            }
+
+            let details = if let Some(ref point) = user_panic_point {
+                format!(
+                    "Contract execution failed with host error: {:?}. Panic point: {}",
+                    host_error, point
+                )
+            } else {
+                format!(
+                    "Contract execution failed with host error: {:?}",
+                    host_error
+                )
+            };
+
+            let structured_error = StructuredError {
+                error_type: "HostError".to_string(),
+                message: format!("{:?}", host_error),
+                details: Some(details),
+            };
+
+            let error_msg = format!("{:?}", host_error);
+            let wasm_offset = extract_wasm_offset(&error_msg);
+            
+            let source_location = if let (Some(offset), Some(mapper)) = (wasm_offset, &source_mapper) {
+                mapper.map_wasm_offset_to_source(offset)
+            } else {
+                None
+            };
+
+            let error_msg = format!("{:?}", host_error);
+            let wasm_offset = extract_wasm_offset(&error_msg);
+
+=======
+>>>>>>> upstream/main
             let response = SimulationResponse {
                 status: "error".to_string(),
                 error: Some(
