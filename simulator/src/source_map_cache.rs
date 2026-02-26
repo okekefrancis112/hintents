@@ -285,7 +285,7 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: 10,
+                column: Some(10),
                 column_end: None,
             },
         );
@@ -353,7 +353,7 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: 10,
+                column: Some(10),
                 column_end: None,
             },
         );

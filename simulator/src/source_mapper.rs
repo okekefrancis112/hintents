@@ -3,9 +3,9 @@
 
 use gimli::{self, ColumnType, Dwarf, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use crate::source_map_cache::{SourceMapCache, SourceMapCacheEntry};
+use std::path::PathBuf;
 
 pub struct SourceMapper {
     has_symbols: bool,
@@ -18,7 +18,7 @@ pub struct SourceMapper {
 pub struct SourceLocation {
     pub file: String,
     pub line: u32,
-    pub column: u32,
+    pub column: Option<u32>,
     pub column_end: Option<u32>,
 }
 
@@ -47,6 +47,12 @@ impl SourceMapper {
         }
     }
 
+    /// Backward-compatible constructor used by tests.
+    #[allow(dead_code)]
+    pub fn new_with_cache(wasm_bytes: Vec<u8>, _cache_dir: PathBuf) -> Self {
+        Self::new(wasm_bytes)
+    }
+
     fn check_debug_symbols(wasm_bytes: &[u8]) -> bool {
         if let Ok(obj_file) = object::File::parse(wasm_bytes) {
             obj_file.section_by_name(".debug_info").is_some()
@@ -56,6 +62,7 @@ impl SourceMapper {
         }
     }
 
+    #[allow(deprecated)]
     fn build_line_cache(wasm_bytes: &[u8]) -> Result<Vec<CachedLineEntry>, String> {
         let obj_file = object::File::parse(wasm_bytes)
             .map_err(|err| format!("failed to parse wasm object: {err}"))?;
@@ -148,7 +155,7 @@ impl SourceMapper {
                     let location = SourceLocation {
                         file: file_name,
                         line: line.get() as u32,
-                        column: column.unwrap_or(0),
+                        column,
                         column_end: None,
                     };
 
@@ -232,17 +239,12 @@ impl SourceMapper {
     pub fn has_debug_symbols(&self) -> bool {
         self.has_symbols
     }
-
-    /// Returns the WASM hash used for caching
-    #[allow(dead_code)]
-    pub fn get_wasm_hash(&self) -> &str {
-        &self.wasm_hash
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source_map_cache::{SourceMapCache, SourceMapCacheEntry};
     use tempfile::TempDir;
 
     fn mapper_with_cache(entries: Vec<CachedLineEntry>) -> SourceMapper {
@@ -271,7 +273,7 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 10,
-                    column: 1,
+                    column: Some(1),
                     column_end: None,
                 },
             },
@@ -281,7 +283,7 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 20,
-                    column: 2,
+                    column: Some(2),
                     column_end: None,
                 },
             },
@@ -303,7 +305,7 @@ mod tests {
             location: SourceLocation {
                 file: "mod.rs".into(),
                 line: 7,
-                column: 0,
+                column: None,
                 column_end: None,
             },
         }]);
@@ -316,7 +318,7 @@ mod tests {
         let location = SourceLocation {
             file: "test.rs".to_string(),
             line: 42,
-            column: 10,
+            column: Some(10),
             column_end: Some(15),
         };
 
@@ -356,7 +358,7 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: 10,
+                column: Some(10),
                 column_end: None,
             },
         );

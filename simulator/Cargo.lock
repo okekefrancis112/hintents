@@ -1818,7 +1818,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.17",
  "libredox",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2246,10 +2246,9 @@ dependencies = [
  "sha2",
  "soroban-env-host",
  "tempfile",
- "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
- "wasmparser 0.121.2",
+ "wasmparser 0.116.1",
  "wat",
 ]
 
@@ -2932,17 +2931,6 @@ version = "0.116.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a58e28b80dd8340cb07b8242ae654756161f6fc8d0038123d679b7b99964fa50"
 dependencies = [
- "indexmap",
- "semver",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.121.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dbe55c8f9d0dbd25d9447a5a889ff90c0cc3feaa7395310d3d826b2c703eaab"
-dependencies = [
- "bitflags",
  "indexmap",
  "semver",
 ]
