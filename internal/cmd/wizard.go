@@ -6,26 +6,28 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/dotandev/hintents/internal/wizard"
 	"github.com/spf13/cobra"
 )
 
 var wizardCmd = &cobra.Command{
-	Use:   "wizard",
-	Short: "Interactive transaction selection wizard",
-	Long:  "Find and select recent failed transactions for debugging.",
+	Use:     "wizard",
+	GroupID: "development",
+	Short:   "Interactive transaction selection wizard",
+	Long:    "Find and select recent failed transactions for debugging.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, _ := cmd.Flags().GetString("account")
 		network, _ := cmd.Flags().GetString("network")
 
 		if account == "" {
-			return fmt.Errorf("account flag required: erst wizard --account <address>")
+			return errors.WrapCliArgumentRequired("account")
 		}
 
 		client, err := rpc.NewClient(rpc.WithNetwork(rpc.Network(network)))
 		if err != nil {
-			return fmt.Errorf("failed to create client: %w", err)
+			return errors.WrapValidationError(err.Error())
 		}
 
 		w := wizard.New(client)
@@ -43,5 +45,8 @@ var wizardCmd = &cobra.Command{
 func init() {
 	wizardCmd.Flags().StringP("account", "a", "", "Stellar account address")
 	wizardCmd.Flags().StringP("network", "n", string(rpc.Mainnet), "Network (testnet, mainnet, futurenet)")
+
+	_ = wizardCmd.RegisterFlagCompletionFunc("network", completeNetworkFlag)
+
 	rootCmd.AddCommand(wizardCmd)
 }

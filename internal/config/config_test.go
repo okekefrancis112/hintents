@@ -164,15 +164,33 @@ network = "testnet"`,
 			"TOML with all fields",
 			`rpc_url = "https://custom.com"
 network = "futurenet"
+network_passphrase = "Test SDF Future Network ; October 2022"
 simulator_path = "/path/to/sim"
 log_level = "debug"
 cache_path = "/custom/cache"`,
 			&Config{
-				RpcUrl:        "https://custom.com",
-				Network:       NetworkFuturenet,
-				SimulatorPath: "/path/to/sim",
-				LogLevel:      "debug",
-				CachePath:     "/custom/cache",
+				RpcUrl:            "https://custom.com",
+				Network:           NetworkFuturenet,
+				NetworkPassphrase: "Test SDF Future Network ; October 2022",
+				SimulatorPath:     "/path/to/sim",
+				LogLevel:          "debug",
+				CachePath:         "/custom/cache",
+			},
+		},
+		{
+			"TOML with rpc_urls array",
+			`rpc_urls = ["https://rpc1.com", "https://rpc2.com"]
+network = "testnet"`,
+			&Config{
+				RpcUrls: []string{"https://rpc1.com", "https://rpc2.com"},
+				Network: NetworkTestnet,
+			},
+		},
+		{
+			"TOML with rpc_urls comma string",
+			`rpc_urls = "https://rpc1.com,https://rpc2.com"`,
+			&Config{
+				RpcUrls: []string{"https://rpc1.com", "https://rpc2.com"},
 			},
 		},
 	}
@@ -189,8 +207,22 @@ cache_path = "/custom/cache"`,
 				t.Errorf("RpcUrl: expected %s, got %s", tt.want.RpcUrl, cfg.RpcUrl)
 			}
 
+			if len(cfg.RpcUrls) != len(tt.want.RpcUrls) {
+				t.Errorf("RpcUrls count: expected %d, got %d", len(tt.want.RpcUrls), len(cfg.RpcUrls))
+			} else {
+				for i := range cfg.RpcUrls {
+					if cfg.RpcUrls[i] != tt.want.RpcUrls[i] {
+						t.Errorf("RpcUrls[%d]: expected %s, got %s", i, tt.want.RpcUrls[i], cfg.RpcUrls[i])
+					}
+				}
+			}
+
 			if cfg.Network != tt.want.Network {
 				t.Errorf("Network: expected %s, got %s", tt.want.Network, cfg.Network)
+			}
+
+			if cfg.NetworkPassphrase != tt.want.NetworkPassphrase {
+				t.Errorf("NetworkPassphrase: expected %s, got %s", tt.want.NetworkPassphrase, cfg.NetworkPassphrase)
 			}
 
 			if cfg.SimulatorPath != tt.want.SimulatorPath {
@@ -239,6 +271,31 @@ func TestLoadFromEnvironment(t *testing.T) {
 
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected LogLevel from env, got %s", cfg.LogLevel)
+	}
+}
+
+func TestGetEnv_RequiresErstPrefix(t *testing.T) {
+	// Ensure non-ERST env keys are ignored by getEnv
+	origStellar := os.Getenv("STELLAR_RPC_URL")
+	origErst := os.Getenv("ERST_RPC_URL")
+	defer func() {
+		os.Setenv("STELLAR_RPC_URL", origStellar)
+		os.Setenv("ERST_RPC_URL", origErst)
+	}()
+
+	os.Setenv("STELLAR_RPC_URL", "https://stellar.example.com")
+	os.Unsetenv("ERST_RPC_URL")
+
+	// getEnv should return the default when asked for non-ERST key
+	def := "https://default.example.com"
+	if got := getEnv("STELLAR_RPC_URL", def); got != def {
+		t.Errorf("expected getEnv to return default for non-ERST key, got %s", got)
+	}
+
+	// But should return value for ERST_ key
+	os.Setenv("ERST_RPC_URL", "https://erst.example.com")
+	if got := getEnv("ERST_RPC_URL", def); got != "https://erst.example.com" {
+		t.Errorf("expected getEnv to read ERST_ env var, got %s", got)
 	}
 }
 
@@ -327,5 +384,234 @@ cache_path = "/cache"`
 	for i := 0; i < b.N; i++ {
 		cfg := &Config{}
 		_ = cfg.parseTOML(content)
+	}
+}
+
+// ---- Crash reporting config -------------------------------------------------
+
+func TestParseTOML_CrashReportingFields(t *testing.T) {
+	content := `rpc_url = "https://test.com"
+network = "testnet"
+crash_reporting = true
+crash_endpoint = "https://custom.example.com/crash"
+crash_sentry_dsn = "https://key@o0.ingest.sentry.io/1"`
+
+	cfg := &Config{}
+	if err := cfg.parseTOML(content); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.CrashReporting {
+		t.Error("expected CrashReporting=true")
+	}
+	if cfg.CrashEndpoint != "https://custom.example.com/crash" {
+		t.Errorf("expected CrashEndpoint from TOML, got %q", cfg.CrashEndpoint)
+	}
+	if cfg.CrashSentryDSN != "https://key@o0.ingest.sentry.io/1" {
+		t.Errorf("expected CrashSentryDSN from TOML, got %q", cfg.CrashSentryDSN)
+	}
+}
+
+func TestParseTOML_CrashReportingDisabledByDefault(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.parseTOML(`rpc_url = "https://test.com"`); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.CrashReporting {
+		t.Error("CrashReporting should default to false")
+	}
+	if cfg.CrashEndpoint != "" {
+		t.Errorf("CrashEndpoint should default to empty, got %q", cfg.CrashEndpoint)
+	}
+	if cfg.CrashSentryDSN != "" {
+		t.Errorf("CrashSentryDSN should default to empty, got %q", cfg.CrashSentryDSN)
+	}
+}
+
+func TestLoad_CrashReportingEnvVars(t *testing.T) {
+	keys := []string{
+		"ERST_CRASH_REPORTING",
+		"ERST_CRASH_ENDPOINT",
+		"ERST_SENTRY_DSN",
+	}
+	orig := make(map[string]string, len(keys))
+	for _, k := range keys {
+		orig[k] = os.Getenv(k)
+	}
+	defer func() {
+		for k, v := range orig {
+			os.Setenv(k, v)
+		}
+	}()
+
+	os.Setenv("ERST_CRASH_REPORTING", "true")
+	os.Setenv("ERST_CRASH_ENDPOINT", "https://custom.example.com/crash")
+	os.Setenv("ERST_SENTRY_DSN", "https://key@o0.ingest.sentry.io/2")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.CrashReporting {
+		t.Error("expected CrashReporting=true from ERST_CRASH_REPORTING")
+	}
+	if cfg.CrashEndpoint != "https://custom.example.com/crash" {
+		t.Errorf("expected CrashEndpoint from env, got %q", cfg.CrashEndpoint)
+	}
+	if cfg.CrashSentryDSN != "https://key@o0.ingest.sentry.io/2" {
+		t.Errorf("expected CrashSentryDSN from env, got %q", cfg.CrashSentryDSN)
+	}
+}
+
+func TestLoad_CrashReportingOffByDefault(t *testing.T) {
+	for _, k := range []string{"ERST_CRASH_REPORTING", "ERST_CRASH_ENDPOINT", "ERST_SENTRY_DSN"} {
+		os.Unsetenv(k)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.CrashReporting {
+		t.Error("CrashReporting should be off by default")
+	}
+}
+
+// ---- RequestTimeout config --------------------------------------------------
+
+func TestDefaultConfig_RequestTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.RequestTimeout != 15 {
+		t.Errorf("expected default RequestTimeout=15, got %d", cfg.RequestTimeout)
+	}
+}
+
+func TestLoad_RequestTimeoutFromEnv(t *testing.T) {
+	orig := os.Getenv("ERST_REQUEST_TIMEOUT")
+	defer os.Setenv("ERST_REQUEST_TIMEOUT", orig)
+
+	os.Setenv("ERST_REQUEST_TIMEOUT", "30")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 30 {
+		t.Errorf("expected RequestTimeout=30 from env, got %d", cfg.RequestTimeout)
+	}
+}
+
+func TestLoad_RequestTimeoutInvalidEnvIgnored(t *testing.T) {
+	orig := os.Getenv("ERST_REQUEST_TIMEOUT")
+	defer os.Setenv("ERST_REQUEST_TIMEOUT", orig)
+
+	os.Setenv("ERST_REQUEST_TIMEOUT", "notanumber")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for invalid ERST_REQUEST_TIMEOUT value")
+	}
+}
+
+func TestLoad_RequestTimeoutZeroEnvIgnored(t *testing.T) {
+	orig := os.Getenv("ERST_REQUEST_TIMEOUT")
+	defer os.Setenv("ERST_REQUEST_TIMEOUT", orig)
+
+	os.Setenv("ERST_REQUEST_TIMEOUT", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 15 {
+		t.Errorf("expected default RequestTimeout=15 for zero env value, got %d", cfg.RequestTimeout)
+	}
+}
+
+func TestParseTOML_RequestTimeout(t *testing.T) {
+	content := `rpc_url = "https://test.com"
+network = "testnet"
+request_timeout = 60`
+
+	cfg := &Config{}
+	if err := cfg.parseTOML(content); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != 60 {
+		t.Errorf("expected RequestTimeout=60 from TOML, got %d", cfg.RequestTimeout)
+	}
+}
+
+func TestParseTOML_RequestTimeoutInvalidIgnored(t *testing.T) {
+	content := `rpc_url = "https://test.com"
+request_timeout = -5`
+
+	cfg := &Config{}
+	if err := cfg.parseTOML(content); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RequestTimeout != -5 {
+		t.Errorf("expected RequestTimeout to parse raw value, got %d", cfg.RequestTimeout)
+	}
+}
+
+func TestValidators_MissingFields(t *testing.T) {
+	tests := []struct {
+		name      string
+		validator Validator
+		cfg       *Config
+		wantErr   bool
+	}{
+		{name: "missing rpc_url", validator: RequiredFieldsValidator{}, cfg: &Config{}, wantErr: true},
+		{name: "present rpc_url", validator: RequiredFieldsValidator{}, cfg: &Config{RpcUrl: "https://ok"}, wantErr: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.validator.Validate(tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("expected error=%v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestParseTOML_InvalidTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "request_timeout invalid type", content: `request_timeout = "abc"`},
+		{name: "crash_reporting invalid type", content: `crash_reporting = "maybe"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{}
+			if err := cfg.parseTOML(tt.content); err == nil {
+				t.Fatal("expected parse error")
+			}
+		})
+	}
+}
+
+func TestRequestTimeout_OutOfBounds(t *testing.T) {
+	tests := []int{-1, 301}
+	for _, timeout := range tests {
+		t.Run("timeout", func(t *testing.T) {
+			cfg := NewConfig("https://test.com", NetworkTestnet).WithRequestTimeout(timeout)
+			if err := (RequestTimeoutValidator{}).Validate(cfg); err == nil {
+				t.Fatalf("expected out-of-bounds error for %d", timeout)
+			}
+		})
+	}
+}
+
+func TestWithRequestTimeout(t *testing.T) {
+	cfg := NewConfig("https://test.com", NetworkTestnet).WithRequestTimeout(45)
+	if cfg.RequestTimeout != 45 {
+		t.Errorf("expected RequestTimeout=45, got %d", cfg.RequestTimeout)
 	}
 }

@@ -15,18 +15,41 @@ import (
 
 // SimulationRequest is the JSON object passed to the Rust binary via Stdin
 type SimulationRequest struct {
-	EnvelopeXdr     string            `json:"envelope_xdr"`
-	ResultMetaXdr   string            `json:"result_meta_xdr"`
-	LedgerEntries   map[string]string `json:"ledger_entries,omitempty"`
-	Timestamp       int64             `json:"timestamp,omitempty"`
-	LedgerSequence  uint32            `json:"ledger_sequence,omitempty"`
-	WasmPath        *string           `json:"wasm_path,omitempty"`
-	MockArgs        *[]string         `json:"mock_args,omitempty"`
-	Profile         bool              `json:"profile,omitempty"`
-	ProtocolVersion *uint32           `json:"protocol_version,omitempty"`
+	EnvelopeXdr      string            `json:"envelope_xdr"`
+	ResultMetaXdr    string            `json:"result_meta_xdr"`
+	LedgerEntries    map[string]string `json:"ledger_entries,omitempty"`
+	Timestamp        int64             `json:"timestamp,omitempty"`
+	LedgerSequence   uint32            `json:"ledger_sequence,omitempty"`
+	WasmPath         *string           `json:"wasm_path,omitempty"`
+	MockArgs         *[]string         `json:"mock_args,omitempty"`
+	Profile          bool              `json:"profile,omitempty"`
+	ProtocolVersion  *uint32           `json:"protocol_version,omitempty"`
+	MockBaseFee      *uint32           `json:"mock_base_fee,omitempty"`
+	MockGasPrice     *uint64           `json:"mock_gas_price,omitempty"`
+	MemoryLimit      *uint64           `json:"memory_limit,omitempty"`
+	EnableCoverage   bool              `json:"enable_coverage,omitempty"`
+	CoverageLCOVPath *string           `json:"coverage_lcov_path,omitempty"`
 
-	AuthTraceOpts *AuthTraceOptions      `json:"auth_trace_opts,omitempty"`
-	CustomAuthCfg map[string]interface{} `json:"custom_auth_config,omitempty"`
+	//New: restorePreamble for state restoration operations
+	RestorePreamble map[string]interface{} `json:"restore_preamble,omitempty"`
+
+	AuthTraceOpts       *AuthTraceOptions      `json:"auth_trace_opts,omitempty"`
+	CustomAuthCfg       map[string]interface{} `json:"custom_auth_config,omitempty"`
+	ResourceCalibration *ResourceCalibration   `json:"resource_calibration,omitempty"`
+
+	// SandboxNativeTokenCapStroops, when set, enforces a hard cap on the sum of native
+	// (XLM) payment amounts in the envelope. Used in local/sandbox mode to simulate
+	// realistic economic constraints during integration tests. Exceeding the cap
+	// causes Run() to return an error before invoking the simulator binary.
+	SandboxNativeTokenCapStroops *uint64 `json:"sandbox_native_token_cap_stroops,omitempty"`
+}
+
+type ResourceCalibration struct {
+	SHA256Fixed      uint64 `json:"sha256_fixed"`
+	SHA256PerByte    uint64 `json:"sha256_per_byte"`
+	Keccak256Fixed   uint64 `json:"keccak256_fixed"`
+	Keccak256PerByte uint64 `json:"keccak256_per_byte"`
+	Ed25519Fixed     uint64 `json:"ed25519_fixed"`
 }
 
 type AuthTraceOptions struct {
@@ -43,6 +66,7 @@ type DiagnosticEvent struct {
 	Topics                   []string `json:"topics"`
 	Data                     string   `json:"data"`
 	InSuccessfulContractCall bool     `json:"in_successful_contract_call"`
+	WasmInstruction          *string  `json:"wasm_instruction,omitempty"`
 }
 
 // BudgetUsage represents resource consumption during simulation
@@ -59,6 +83,9 @@ type BudgetUsage struct {
 type SimulationResponse struct {
 	Status            string               `json:"status"` // "success" or "error"
 	Error             string               `json:"error,omitempty"`
+	ErrorCode         string               `json:"error_code,omitempty"`
+	LCOVReport        string               `json:"lcov_report,omitempty"`
+	LCOVReportPath    string               `json:"lcov_report_path,omitempty"`
 	Events            []string             `json:"events,omitempty"`            // Raw event strings (backward compatibility)
 	DiagnosticEvents  []DiagnosticEvent    `json:"diagnostic_events,omitempty"` // Structured diagnostic events
 	Logs              []string             `json:"logs,omitempty"`              // Host debug logs
@@ -67,6 +94,10 @@ type SimulationResponse struct {
 	BudgetUsage       *BudgetUsage         `json:"budget_usage,omitempty"` // Resource consumption metrics
 	CategorizedEvents []CategorizedEvent   `json:"categorized_events,omitempty"`
 	ProtocolVersion   *uint32              `json:"protocol_version,omitempty"` // Protocol version used
+	StackTrace        *WasmStackTrace      `json:"stack_trace,omitempty"`      // Enhanced WASM stack trace on traps
+	SourceLocation    string               `json:"source_location,omitempty"`
+	WasmOffset        *uint64              `json:"wasm_offset,omitempty"`
+	LinearMemoryDump  string               `json:"linear_memory_dump,omitempty"`
 }
 
 type CategorizedEvent struct {
@@ -84,6 +115,14 @@ type SecurityViolation struct {
 	Details     map[string]interface{} `json:"details,omitempty"`
 }
 
+// SourceLocation represents a precise position in Rust/WASM source code.
+type SourceLocation struct {
+	File      string `json:"file"`
+	Line      uint   `json:"line"`
+	Column    uint   `json:"column"`
+	ColumnEnd *uint  `json:"column_end,omitempty"`
+}
+
 // Session represents a stored simulation result
 type Session struct {
 	ID        int64     `json:"id"`
@@ -93,6 +132,24 @@ type Session struct {
 	Error     string    `json:"error,omitempty"`
 	Events    string    `json:"events,omitempty"` // JSON string
 	Logs      string    `json:"logs,omitempty"`   // JSON string
+}
+
+// WasmStackTrace holds a structured WASM call stack captured on a trap.
+// This bypasses Soroban Host abstractions to expose the raw Wasmi call stack.
+type WasmStackTrace struct {
+	TrapKind       interface{}  `json:"trap_kind"`       // Categorised trap reason
+	RawMessage     string       `json:"raw_message"`     // Original error string
+	Frames         []StackFrame `json:"frames"`          // Ordered call stack frames
+	SorobanWrapped bool         `json:"soroban_wrapped"` // Whether the error passed through Soroban Host
+}
+
+// StackFrame represents a single frame in a WASM call stack.
+type StackFrame struct {
+	Index      int     `json:"index"`                 // Position in the call stack (0 = trap site)
+	FuncIndex  *uint32 `json:"func_index,omitempty"`  // WASM function index
+	FuncName   *string `json:"func_name,omitempty"`   // Demangled function name
+	WasmOffset *uint64 `json:"wasm_offset,omitempty"` // Byte offset in the WASM module
+	Module     *string `json:"module,omitempty"`      // Module name from name section
 }
 
 type DB struct {

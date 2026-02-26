@@ -7,13 +7,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dotandev/hintents/internal/cache"
+	"github.com/dotandev/hintents/internal/errors"
+	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cacheForceFlag bool
+	cacheForceFlag     bool
+	cleanOlderThanFlag int
+	cleanNetworkFlag   string
+	cleanAllFlag       bool
 )
 
 // getCacheDir returns the default cache directory
@@ -26,8 +32,9 @@ func getCacheDir() string {
 }
 
 var cacheCmd = &cobra.Command{
-	Use:   "cache",
-	Short: "Manage transaction and simulation cache",
+	Use:     "cache",
+	GroupID: "management",
+	Short:   "Manage transaction and simulation cache",
 	Long: `Manage the local cache that stores transaction data and simulation results.
 Caching improves performance and enables offline analysis.
 
@@ -65,12 +72,12 @@ var cacheStatusCmd = &cobra.Command{
 
 		size, err := manager.GetCacheSize()
 		if err != nil {
-			return fmt.Errorf("Error: failed to calculate cache size: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to calculate cache size: %v", err))
 		}
 
 		files, err := manager.ListCachedFiles()
 		if err != nil {
-			return fmt.Errorf("Error: failed to list cache files: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to list cache files: %v", err))
 		}
 
 		fmt.Printf("Cache directory: %s\n", cacheDir)
@@ -109,7 +116,7 @@ Use --force to skip the confirmation prompt.`,
 
 		status, err := manager.Clean(cacheForceFlag)
 		if err != nil {
-			return fmt.Errorf("Error: cache cleanup failed: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("cache cleanup failed: %v", err))
 		}
 
 		if status.FilesDeleted == 0 && status.OriginalSize > 0 {
@@ -147,7 +154,7 @@ var cacheClearCmd = &cobra.Command{
 			fmt.Print("Are you sure? (yes/no): ")
 			var response string
 			if _, err := fmt.Scanln(&response); err != nil {
-				return fmt.Errorf("Error: failed to read confirmation input: %w", err)
+				return errors.WrapValidationError(fmt.Sprintf("failed to read confirmation input: %v", err))
 			}
 			if response != "yes" && response != "y" {
 				fmt.Println("Cache clear cancelled")
@@ -157,7 +164,7 @@ var cacheClearCmd = &cobra.Command{
 
 		err := os.RemoveAll(cacheDir)
 		if err != nil {
-			return fmt.Errorf("Error: failed to clear cache directory: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to clear cache directory: %v", err))
 		}
 
 		fmt.Println("Cache cleared successfully")
@@ -182,15 +189,64 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.2f %s", size, units[unitIndex])
 }
 
+
+var cacheCleanRPCCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Prune the local SQLite RPC fetch cache by date or network",
+	Long: `Remove entries from the local SQLite RPC fetch cache (~/.erst/cache.db).
+
+Filter options:
+  --older-than <days>  Remove entries created more than N days ago
+  --network <name>     Remove entries for a specific network (e.g. mainnet, testnet)
+  --all                Remove all cached RPC entries
+
+At least one filter must be specified. Filters can be combined.`,
+	Example: `  # Remove entries older than 7 days
+  erst cache clean --older-than 7
+
+  # Remove all testnet entries
+  erst cache clean --network testnet
+
+  # Remove testnet entries older than 30 days
+  erst cache clean --older-than 30 --network testnet
+
+  # Remove all RPC cache entries
+  erst cache clean --all`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !cleanAllFlag && cleanOlderThanFlag == 0 && cleanNetworkFlag == "" {
+			return fmt.Errorf("no filter specified: use --all, --older-than, or --network")
+		}
+
+		filter := rpc.CleanFilter{
+			OlderThan: time.Duration(cleanOlderThanFlag) * 24 * time.Hour,
+			Network:   cleanNetworkFlag,
+			All:       cleanAllFlag,
+		}
+
+		removed, err := rpc.CleanByFilter(filter)
+		if err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("RPC cache clean failed: %v", err))
+		}
+
+		fmt.Printf("%d RPC cache entries removed.\n", removed)
+		return nil
+	},
+}
+
 func init() {
 	// Add subcommands to cache command
 	cacheCmd.AddCommand(cacheStatusCmd)
 	cacheCmd.AddCommand(cacheCleanCmd)
 	cacheCmd.AddCommand(cacheClearCmd)
+	cacheCmd.AddCommand(cacheCleanRPCCmd)
 
 	// Add flags
 	cacheCleanCmd.Flags().BoolVarP(&cacheForceFlag, "force", "f", false, "Skip confirmation prompt")
 	cacheClearCmd.Flags().BoolVarP(&cacheForceFlag, "force", "f", false, "Skip confirmation prompt")
+	cacheCleanRPCCmd.Flags().IntVar(&cleanOlderThanFlag, "older-than", 0, "Remove entries older than N days")
+	cacheCleanRPCCmd.Flags().StringVar(&cleanNetworkFlag, "network", "", "Remove entries for a specific network")
+	cacheCleanRPCCmd.Flags().BoolVar(&cleanAllFlag, "all", false, "Remove all RPC cache entries")
 
 	// Add cache command to root
 	rootCmd.AddCommand(cacheCmd)

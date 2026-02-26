@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/dotandev/hintents/internal/daemon"
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/rpc"
 	"github.com/dotandev/hintents/internal/telemetry"
 	"github.com/spf13/cobra"
@@ -26,8 +27,9 @@ var (
 )
 
 var daemonCmd = &cobra.Command{
-	Use:   "daemon",
-	Short: "Start JSON-RPC server for remote debugging",
+	Use:     "daemon",
+	GroupID: "development",
+	Short:   "Start JSON-RPC server for remote debugging",
 	Long: `Start a JSON-RPC 2.0 server that exposes ERST functionality for remote tools and IDEs.
 
 Endpoints:
@@ -50,7 +52,7 @@ Example:
 				ServiceName: "erst-daemon",
 			})
 			if err != nil {
-				return fmt.Errorf("failed to initialize telemetry: %w", err)
+				return errors.WrapValidationError(fmt.Sprintf("failed to initialize telemetry: %v", err))
 			}
 			defer cleanup()
 		}
@@ -59,7 +61,7 @@ Example:
 		switch rpc.Network(daemonNetwork) {
 		case rpc.Testnet, rpc.Mainnet, rpc.Futurenet:
 		default:
-			return fmt.Errorf("invalid network: %s. Must be one of: testnet, mainnet, futurenet", daemonNetwork)
+			return errors.WrapInvalidNetwork(daemonNetwork)
 		}
 
 		// Create server
@@ -70,7 +72,7 @@ Example:
 			AuthToken: daemonAuthToken,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create server: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to create server: %v", err))
 		}
 
 		// Setup graceful shutdown
@@ -107,6 +109,8 @@ func init() {
 	daemonCmd.Flags().StringVar(&daemonAuthToken, "auth-token", "", "Authentication token for API access")
 	daemonCmd.Flags().BoolVar(&daemonTracing, "tracing", false, "Enable OpenTelemetry tracing")
 	daemonCmd.Flags().StringVar(&daemonOTLPURL, "otlp-url", "http://localhost:4318", "OTLP exporter URL")
+
+	_ = daemonCmd.RegisterFlagCompletionFunc("network", completeNetworkFlag)
 
 	rootCmd.AddCommand(daemonCmd)
 }

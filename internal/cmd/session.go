@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -30,8 +31,9 @@ func GetCurrentSession() *session.SessionData {
 }
 
 var sessionCmd = &cobra.Command{
-	Use:   "session",
-	Short: "Manage debugging sessions",
+	Use:     "session",
+	GroupID: "management",
+	Short:   "Manage debugging sessions",
 	Long: `Save, resume, and manage debugging sessions to preserve state across CLI invocations.
 
 Sessions store complete transaction data, simulation results, and analysis context,
@@ -78,7 +80,7 @@ The session ID can be auto-generated or specified with --id flag.`,
 		// Check if we have an active session
 		data := GetCurrentSession()
 		if data == nil {
-			return fmt.Errorf("Error: no active session to save. Run 'erst debug <tx-hash>' first")
+			return errors.WrapSimulationLogicError("no active session to save. Run 'erst debug <tx-hash>' first")
 		}
 
 		// Generate or use provided ID
@@ -94,7 +96,7 @@ The session ID can be auto-generated or specified with --id flag.`,
 		// Open session store
 		store, err := session.NewStore()
 		if err != nil {
-			return fmt.Errorf("failed to open session store: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to open session store: %v", err))
 		}
 		defer store.Close()
 
@@ -106,7 +108,7 @@ The session ID can be auto-generated or specified with --id flag.`,
 
 		// Save session
 		if err := store.Save(ctx, data); err != nil {
-			return fmt.Errorf("Error: failed to save session: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to save session: %v", err))
 		}
 
 		fmt.Printf("Session saved: %s\n", data.ID)
@@ -139,7 +141,7 @@ Use 'erst session list' to see available sessions.`,
 		// Open session store
 		store, err := session.NewStore()
 		if err != nil {
-			return fmt.Errorf("Error: failed to open session store: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to open session store: %v", err))
 		}
 		defer store.Close()
 
@@ -148,15 +150,15 @@ Use 'erst session list' to see available sessions.`,
 			fmt.Fprintf(os.Stderr, "Warning: session cleanup failed: %v\n", err)
 		}
 
-		// Load session
-		data, err := store.Load(ctx, sessionID)
+		// Resolve session by exact ID, partial ID prefix, tx hash, or fuzzy match
+		data, err := resolveSessionInput(ctx, store, sessionID)
 		if err != nil {
-			return fmt.Errorf("Error: session '%s' not found or failed to load: %w", sessionID, err)
+			return err
 		}
 
 		// Check schema version compatibility
 		if data.SchemaVersion > session.SchemaVersion {
-			return fmt.Errorf("Error: session was created with a newer version of erst (schema v%d > v%d). Please upgrade erst", data.SchemaVersion, session.SchemaVersion)
+			return errors.WrapProtocolUnsupported(uint32(data.SchemaVersion))
 		}
 
 		// Update status and make it current
@@ -213,7 +215,7 @@ Displays session ID, network, last access time, and transaction hash.`,
 		// Open session store
 		store, err := session.NewStore()
 		if err != nil {
-			return fmt.Errorf("Error: failed to open session store: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to open session store: %v", err))
 		}
 		defer store.Close()
 
@@ -225,7 +227,7 @@ Displays session ID, network, last access time, and transaction hash.`,
 		// List sessions
 		sessions, err := store.List(ctx, 50)
 		if err != nil {
-			return fmt.Errorf("Error: failed to list sessions: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to list sessions: %v", err))
 		}
 
 		if len(sessions) == 0 {
@@ -266,16 +268,21 @@ Use 'erst session list' to see available sessions.`,
 		// Open session store
 		store, err := session.NewStore()
 		if err != nil {
-			return fmt.Errorf("Error: failed to open session store: %w", err)
+			return errors.WrapValidationError(fmt.Sprintf("failed to open session store: %v", err))
 		}
 		defer store.Close()
 
-		// Delete session
-		if err := store.Delete(ctx, sessionID); err != nil {
-			return fmt.Errorf("Error: failed to delete session '%s': %w", sessionID, err)
+		// Resolve to a valid session ID before deleting
+		resolved, resolveErr := resolveSessionInput(ctx, store, sessionID)
+		if resolveErr != nil {
+			return resolveErr
 		}
 
-		fmt.Printf("Session deleted: %s\n", sessionID)
+		if err := store.Delete(ctx, resolved.ID); err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to delete session '%s': %v", resolved.ID, err))
+		}
+
+		fmt.Printf("Session deleted: %s\n", resolved.ID)
 		return nil
 	},
 }

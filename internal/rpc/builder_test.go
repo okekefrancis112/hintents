@@ -127,6 +127,16 @@ func TestWithHTTPClient(t *testing.T) {
 	}
 }
 
+func TestMethodTelemetry_DefaultsToNoop(t *testing.T) {
+	client, err := NewClient()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if client.methodTelemetry == nil {
+		t.Fatal("expected default no-op method telemetry")
+	}
+}
+
 func TestMultipleOptions(t *testing.T) {
 	token := "test-token"
 	client, err := NewClient(
@@ -268,6 +278,7 @@ func TestDeprecatedNewClient(t *testing.T) {
 	client := NewClientDefault(Testnet, "token")
 	if client == nil {
 		t.Fatal("expected client, got nil")
+		return
 	}
 	if client.Network != Testnet {
 		t.Errorf("expected Testnet network")
@@ -278,6 +289,7 @@ func TestDeprecatedNewClientWithURL(t *testing.T) {
 	client := NewClientWithURLOption(TestnetHorizonURL, Testnet, "token")
 	if client == nil {
 		t.Fatal("expected client, got nil")
+		return
 	}
 	if client.HorizonURL != TestnetHorizonURL {
 		t.Errorf("expected HorizonURL to match")
@@ -289,6 +301,7 @@ func TestDeprecatedNewClientWithURLs(t *testing.T) {
 	client := NewClientWithURLsOption(urls, Testnet, "token")
 	if client == nil {
 		t.Fatal("expected client, got nil")
+		return
 	}
 	if len(client.AltURLs) != len(urls) {
 		t.Errorf("expected %d URLs", len(urls))

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"maps"
 	"sort"
+
+	"github.com/dotandev/hintents/internal/errors"
 )
 
 type Protocol struct {
@@ -14,6 +16,11 @@ type Protocol struct {
 	Name     string
 	Features map[string]interface{}
 }
+
+const (
+	keccak256FixedCalibration   uint64 = 3072
+	keccak256PerByteCalibration uint64 = 74
+)
 
 var protocols = map[uint32]*Protocol{
 	20: {
@@ -24,6 +31,13 @@ var protocols = map[uint32]*Protocol{
 			"max_contract_data_size": 1024000,
 			"max_instruction_limit":  100000000,
 			"supported_opcodes":      []string{"invoke_contract", "create_contract"},
+			"resource_calibration": &ResourceCalibration{
+				SHA256Fixed:      3738,
+				SHA256PerByte:    37,
+				Keccak256Fixed:   keccak256FixedCalibration,
+				Keccak256PerByte: keccak256PerByteCalibration,
+				Ed25519Fixed:     377524,
+			},
 		},
 	},
 	21: {
@@ -35,6 +49,13 @@ var protocols = map[uint32]*Protocol{
 			"max_instruction_limit":  150000000,
 			"supported_opcodes":      []string{"invoke_contract", "create_contract", "extend_contract"},
 			"enhanced_metering":      true,
+			"resource_calibration": &ResourceCalibration{
+				SHA256Fixed:      3738,
+				SHA256PerByte:    37,
+				Keccak256Fixed:   keccak256FixedCalibration,
+				Keccak256PerByte: keccak256PerByteCalibration,
+				Ed25519Fixed:     377524,
+			},
 		},
 	},
 	22: {
@@ -47,6 +68,13 @@ var protocols = map[uint32]*Protocol{
 			"supported_opcodes":      []string{"invoke_contract", "create_contract", "extend_contract", "upgrade_contract"},
 			"enhanced_metering":      true,
 			"optimized_storage":      true,
+			"resource_calibration": &ResourceCalibration{
+				SHA256Fixed:      3738,
+				SHA256PerByte:    37,
+				Keccak256Fixed:   keccak256FixedCalibration,
+				Keccak256PerByte: keccak256PerByteCalibration,
+				Ed25519Fixed:     377524,
+			},
 		},
 	},
 }
@@ -61,7 +89,7 @@ func Get(version uint32) (*Protocol, error) {
 	if p, exists := protocols[version]; exists {
 		return p, nil
 	}
-	return nil, fmt.Errorf("unsupported protocol version: %d", version)
+	return nil, errors.WrapProtocolUnsupported(version)
 }
 
 func GetOrDefault(version *uint32) *Protocol {
@@ -82,7 +110,7 @@ func Feature(version uint32, key string) (interface{}, error) {
 	}
 	val, exists := p.Features[key]
 	if !exists {
-		return nil, fmt.Errorf("feature %q not found in protocol %d", key, version)
+		return nil, errors.WrapSimulationLogicError(fmt.Sprintf("feature %q not found in protocol %d", key, version))
 	}
 	return val, nil
 }
@@ -97,7 +125,7 @@ func FeatureOrDefault(version uint32, key string, defVal interface{}) interface{
 
 func Validate(version uint32) error {
 	if _, ok := protocols[version]; !ok {
-		return fmt.Errorf("unsupported protocol version: %d", version)
+		return errors.WrapProtocolUnsupported(version)
 	}
 	return nil
 }

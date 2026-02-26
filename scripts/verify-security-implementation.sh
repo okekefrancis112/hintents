@@ -1,3 +1,6 @@
+# Copyright (c) Hintents Authors.
+# SPDX-License-Identifier: Apache-2.0
+
 #!/bin/bash
 
 // Copyright (c) 2026 dotandev
@@ -5,7 +8,11 @@
 
 # Verification script for security vulnerability detection implementation
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
 
 echo "=== Security Vulnerability Detection - Verification ==="
 echo
