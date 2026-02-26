@@ -35,6 +35,7 @@ import (
 	"github.com/stellar/go-stellar-sdk/xdr"
 	"go.opentelemetry.io/otel/attribute"
 )
+
 var (
 	networkFlag        string
 	rpcURLFlag         string
@@ -47,6 +48,7 @@ var (
 	compareNetworkFlag string
 	verbose            bool
 	wasmPath           string
+	wasmOptimizeFlag   bool
 	args               []string
 	noCacheFlag        bool
 	demoMode           bool
@@ -154,8 +156,9 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 }
 
 var debugCmd = &cobra.Command{
-	Use:   "debug <transaction-hash>",
-	Short: "Debug a failed Soroban transaction",
+	Use:     "debug <transaction-hash>",
+	GroupID: "core",
+	Short:   "Debug a failed Soroban transaction",
 	Long: `Fetch and simulate a Soroban transaction to debug failures and analyze execution.
 
 This command retrieves the transaction envelope from the Stellar network, runs it
@@ -572,7 +575,7 @@ Local WASM Replay Mode:
 		// Analysis: Error Suggestions (Heuristic-based)
 		if len(lastSimResp.Events) > 0 {
 			suggestionEngine := decoder.NewSuggestionEngine()
-			
+
 			// Decode events for analysis
 			callTree, err := decoder.DecodeEvents(lastSimResp.Events)
 			if err == nil && callTree != nil {
@@ -697,19 +700,30 @@ func runDemoMode(cmdArgs []string) error {
 func runLocalWasmReplay() error {
 	fmt.Printf("%s  WARNING: Using Mock State (not mainnet data)\n", visualizer.Warning())
 	fmt.Println()
+	effectiveWasmPath := wasmPath
 
 	// Verify WASM file exists
-	if _, err := os.Stat(wasmPath); os.IsNotExist(err) {
+	if _, err := os.Stat(effectiveWasmPath); os.IsNotExist(err) {
 		return errors.WrapValidationError(fmt.Sprintf("WASM file not found: %s", wasmPath))
 	}
 
+	optimizedPath, report, cleanup, err := optimizeWasmFileIfRequested(effectiveWasmPath, wasmOptimizeFlag)
+	if err != nil {
+		return errors.WrapValidationError(fmt.Sprintf("failed to optimize WASM: %v", err))
+	}
+	defer cleanup()
+	effectiveWasmPath = optimizedPath
+
 	fmt.Printf("%s Local WASM Replay Mode\n", visualizer.Symbol("wrench"))
-	fmt.Printf("WASM File: %s\n", wasmPath)
+	fmt.Printf("WASM File: %s\n", effectiveWasmPath)
+	if wasmOptimizeFlag {
+		printOptimizationReport(report)
+	}
 	fmt.Printf("Arguments: %v\n", args)
 	fmt.Println()
 
 	// Check for LTO in the project that produced the WASM
-	checkLTOWarning(wasmPath)
+	checkLTOWarning(effectiveWasmPath)
 
 	// Create simulator runner
 	runner, err := simulator.NewRunner("", tracingEnabled)
@@ -722,7 +736,7 @@ func runLocalWasmReplay() error {
 		EnvelopeXdr:   "",  // Empty for local replay
 		ResultMetaXdr: "",  // Empty for local replay
 		LedgerEntries: nil, // Mock state will be generated
-		WasmPath:      &wasmPath,
+		WasmPath:      &effectiveWasmPath,
 		MockArgs:      &args,
 	}
 	applySimulationFeeMocks(req)
@@ -746,7 +760,7 @@ func runLocalWasmReplay() error {
 		// Fallback to WAT disassembly if source mapping is unavailable but we have an offset
 		if resp.SourceLocation == "" && resp.WasmOffset != nil {
 			fmt.Println()
-			wasmBytes, err := os.ReadFile(wasmPath)
+			wasmBytes, err := os.ReadFile(effectiveWasmPath)
 			if err == nil {
 				fallbackMsg := wat.FormatFallback(wasmBytes, *resp.WasmOffset, 5)
 				fmt.Println(fallbackMsg)
@@ -1130,6 +1144,7 @@ func init() {
 	debugCmd.Flags().StringVar(&compareNetworkFlag, "compare-network", "", "Network to compare against (testnet, mainnet, futurenet)")
 	debugCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	debugCmd.Flags().StringVar(&wasmPath, "wasm", "", "Path to local WASM file for local replay (no network required)")
+	debugCmd.Flags().BoolVar(&wasmOptimizeFlag, "optimize", false, "Run dead-code elimination on local WASM before replay")
 	debugCmd.Flags().StringSliceVar(&args, "args", []string{}, "Mock arguments for local replay (JSON array of strings)")
 	debugCmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "Disable local ledger state caching")
 	debugCmd.Flags().BoolVar(&demoMode, "demo", false, "Print sample output (no network) - for testing color detection")
