@@ -1,22 +1,32 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
+package simulator
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	internalErrors "github.com/dotandev/hintents/internal/errors"
+)
+
 func TestSimulationRequestBuilder_WithRestorePreamble(t *testing.T) {
- builder := NewSimulationRequestBuilder()
+	builder := NewSimulationRequestBuilder()
 
- preamble := map[string]interface{}{
-  "foo": "bar",
-  "count": 42,
- }
+	preamble := map[string]interface{}{
+		"foo":   "bar",
+		"count": 42,
+	}
 
- req, err := builder.
-  WithEnvelopeXDR("envelope").
-  WithResultMetaXDR("result").
-  WithRestorePreamble(preamble).
-  Build()
+	req, err := builder.
+		WithEnvelopeXDR("envelope").
+		WithResultMetaXDR("result").
+		WithRestorePreamble(preamble).
+		Build()
 
- if err != nil {
-  t.Fatalf("expected no error, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
  }
 
  if req.RestorePreamble == nil {
@@ -30,6 +40,8 @@ func TestSimulationRequestBuilder_WithRestorePreamble(t *testing.T) {
  }
 }
 
+=======
+>>>>>>> upstream/main
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
@@ -42,6 +54,35 @@ import (
 
 	internalErrors "github.com/dotandev/hintents/internal/errors"
 )
+
+func TestSimulationRequestBuilder_WithRestorePreamble(t *testing.T) {
+	builder := NewSimulationRequestBuilder()
+
+	preamble := map[string]interface{}{
+		"foo":   "bar",
+		"count": 42,
+	}
+
+	req, err := builder.
+		WithEnvelopeXDR("envelope").
+		WithResultMetaXDR("result").
+		WithRestorePreamble(preamble).
+		Build()
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if req.RestorePreamble == nil {
+		t.Fatalf("expected RestorePreamble to be set")
+	}
+	if req.RestorePreamble["foo"] != "bar" {
+		t.Errorf("expected RestorePreamble['foo'] to be 'bar', got: %v", req.RestorePreamble["foo"])
+	}
+	if req.RestorePreamble["count"] != 42 {
+		t.Errorf("expected RestorePreamble['count'] to be 42, got: %v", req.RestorePreamble["count"])
+	}
+}
 
 func TestSimulationRequestBuilder_Basic(t *testing.T) {
 	builder := NewSimulationRequestBuilder()
