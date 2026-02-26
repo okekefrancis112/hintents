@@ -48,6 +48,7 @@ var (
 	compareNetworkFlag string
 	verbose            bool
 	wasmPath           string
+	wasmOptimizeFlag   bool
 	args               []string
 	noCacheFlag        bool
 	demoMode           bool
@@ -109,8 +110,8 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 		token = os.Getenv("ERST_RPC_TOKEN")
 	}
 	if token == "" {
-		cfg, err := config.LoadConfig()
-		if err == nil && cfg.RPCToken != "" {
+		cfg, cfgErr := config.LoadConfig()
+		if cfgErr == nil && cfg.RPCToken != "" {
 			token = cfg.RPCToken
 		}
 	}
@@ -153,8 +154,9 @@ func (d *DebugCommand) runDebug(cmd *cobra.Command, args []string) error {
 }
 
 var debugCmd = &cobra.Command{
-	Use:   "debug <transaction-hash>",
-	Short: "Debug a failed Soroban transaction",
+	Use:     "debug <transaction-hash>",
+	GroupID: "core",
+	Short:   "Debug a failed Soroban transaction",
 	Long: `Fetch and simulate a Soroban transaction to debug failures and analyze execution.
 
 This command retrieves the transaction envelope from the Stellar network, runs it
@@ -265,13 +267,13 @@ Local WASM Replay Mode:
 
 		// Initialize OpenTelemetry if enabled
 		if tracingEnabled {
-			cleanup, err := telemetry.Init(ctx, telemetry.Config{
+			cleanup, telErr := telemetry.Init(ctx, telemetry.Config{
 				Enabled:     true,
 				ExporterURL: otlpExporterURL,
 				ServiceName: "erst",
 			})
-			if err != nil {
-				return errors.WrapValidationError(fmt.Sprintf("failed to initialize telemetry: %v", err))
+			if telErr != nil {
+				return errors.WrapValidationError(fmt.Sprintf("failed to initialize telemetry: %v", telErr))
 			}
 			defer cleanup()
 		}
@@ -291,7 +293,7 @@ Local WASM Replay Mode:
 			token = os.Getenv("ERST_RPC_TOKEN")
 		}
 		if token == "" {
-			if cfg, err := config.Load(); err == nil && cfg.RPCToken != "" {
+			if cfg, cfgErr := config.Load(); cfgErr == nil && cfg.RPCToken != "" {
 				token = cfg.RPCToken
 			}
 		}
@@ -309,8 +311,8 @@ Local WASM Replay Mode:
 			opts = append(opts, rpc.WithAltURLs(urls))
 			horizonURL = urls[0]
 		} else {
-			cfg, err := config.Load()
-			if err == nil {
+			cfg, cfgErr := config.Load()
+			if cfgErr == nil {
 				if len(cfg.RpcUrls) > 0 {
 					opts = append(opts, rpc.WithAltURLs(cfg.RpcUrls))
 					horizonURL = cfg.RpcUrls[0]
@@ -353,7 +355,7 @@ Local WASM Replay Mode:
 
 			spinner.Start("Waiting for transaction to appear on-chain...")
 
-			result, err := poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
+			result, pollErr := poller.Poll(ctx, func(pollCtx context.Context) (interface{}, error) {
 				_, pollErr := client.GetTransaction(pollCtx, txHash)
 				if pollErr != nil {
 					return nil, pollErr
@@ -361,9 +363,9 @@ Local WASM Replay Mode:
 				return true, nil
 			}, nil)
 
-			if err != nil {
+			if pollErr != nil {
 				spinner.StopWithError("Failed to poll for transaction")
-				return errors.WrapSimulationLogicError(fmt.Sprintf("watch mode error: %v", err))
+				return errors.WrapSimulationLogicError(fmt.Sprintf("watch mode error: %v", pollErr))
 			}
 
 			if !result.Found {
@@ -417,9 +419,9 @@ Local WASM Replay Mode:
 			if compareNetworkFlag == "" {
 				// Single Network Run
 				if snapshotFlag != "" {
-					snap, err := snapshot.Load(snapshotFlag)
-					if err != nil {
-						return errors.WrapValidationError(fmt.Sprintf("failed to load snapshot: %v", err))
+					snap, snapErr := snapshot.Load(snapshotFlag)
+					if snapErr != nil {
+						return errors.WrapValidationError(fmt.Sprintf("failed to load snapshot: %v", snapErr))
 					}
 					ledgerEntries = snap.ToMap()
 					fmt.Printf("Loaded %d ledger entries from snapshot\n", len(ledgerEntries))
@@ -448,8 +450,8 @@ Local WASM Replay Mode:
 
 				// Apply protocol version override if specified
 				if protocolVersionFlag > 0 {
-					if err := simulator.Validate(protocolVersionFlag); err != nil {
-						return fmt.Errorf("invalid protocol version %d: %w", protocolVersionFlag, err)
+					if validateErr := simulator.Validate(protocolVersionFlag); validateErr != nil {
+						return fmt.Errorf("invalid protocol version %d: %w", protocolVersionFlag, validateErr)
 					}
 					simReq.ProtocolVersion = &protocolVersionFlag
 					fmt.Printf("Using protocol version override: %d\n", protocolVersionFlag)
@@ -569,8 +571,8 @@ Local WASM Replay Mode:
 			suggestionEngine := decoder.NewSuggestionEngine()
 
 			// Decode events for analysis
-			callTree, err := decoder.DecodeEvents(lastSimResp.Events)
-			if err == nil && callTree != nil {
+			callTree, decodeErr := decoder.DecodeEvents(lastSimResp.Events)
+			if decodeErr == nil && callTree != nil {
 				suggestions := suggestionEngine.AnalyzeCallTree(callTree)
 				if len(suggestions) > 0 {
 					fmt.Print(decoder.FormatSuggestions(suggestions))
@@ -618,7 +620,7 @@ Local WASM Replay Mode:
 		}
 
 		// Analysis: Token Flows
-		if report, err := tokenflow.BuildReport(resp.EnvelopeXdr, resp.ResultMetaXdr); err == nil && len(report.Agg) > 0 {
+		if report, tfErr := tokenflow.BuildReport(resp.EnvelopeXdr, resp.ResultMetaXdr); tfErr == nil && len(report.Agg) > 0 {
 			fmt.Printf("\nToken Flow Summary:\n")
 			for _, line := range report.SummaryLines() {
 				fmt.Printf("  %s\n", line)
@@ -692,19 +694,30 @@ func runDemoMode(cmdArgs []string) error {
 func runLocalWasmReplay() error {
 	fmt.Printf("%s  WARNING: Using Mock State (not mainnet data)\n", visualizer.Warning())
 	fmt.Println()
+	effectiveWasmPath := wasmPath
 
 	// Verify WASM file exists
-	if _, err := os.Stat(wasmPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(effectiveWasmPath); os.IsNotExist(statErr) {
 		return errors.WrapValidationError(fmt.Sprintf("WASM file not found: %s", wasmPath))
 	}
 
+	optimizedPath, report, cleanup, err := optimizeWasmFileIfRequested(effectiveWasmPath, wasmOptimizeFlag)
+	if err != nil {
+		return errors.WrapValidationError(fmt.Sprintf("failed to optimize WASM: %v", err))
+	}
+	defer cleanup()
+	effectiveWasmPath = optimizedPath
+
 	fmt.Printf("%s Local WASM Replay Mode\n", visualizer.Symbol("wrench"))
-	fmt.Printf("WASM File: %s\n", wasmPath)
+	fmt.Printf("WASM File: %s\n", effectiveWasmPath)
+	if wasmOptimizeFlag {
+		printOptimizationReport(report)
+	}
 	fmt.Printf("Arguments: %v\n", args)
 	fmt.Println()
 
 	// Check for LTO in the project that produced the WASM
-	checkLTOWarning(wasmPath)
+	checkLTOWarning(effectiveWasmPath)
 
 	// Create simulator runner
 	runner, err := simulator.NewRunner("", tracingEnabled)
@@ -717,7 +730,7 @@ func runLocalWasmReplay() error {
 		EnvelopeXdr:   "",  // Empty for local replay
 		ResultMetaXdr: "",  // Empty for local replay
 		LedgerEntries: nil, // Mock state will be generated
-		WasmPath:      &wasmPath,
+		WasmPath:      &effectiveWasmPath,
 		MockArgs:      &args,
 	}
 	applySimulationFeeMocks(req)
@@ -741,8 +754,8 @@ func runLocalWasmReplay() error {
 		// Fallback to WAT disassembly if source mapping is unavailable but we have an offset
 		if resp.SourceLocation == "" && resp.WasmOffset != nil {
 			fmt.Println()
-			wasmBytes, err := os.ReadFile(wasmPath)
-			if err == nil {
+			wasmBytes, readErr := os.ReadFile(effectiveWasmPath)
+			if readErr == nil {
 				fallbackMsg := wat.FormatFallback(wasmBytes, *resp.WasmOffset, 5)
 				fmt.Println(fallbackMsg)
 			}
@@ -788,7 +801,7 @@ func extractLedgerKeys(metaXdr string) ([]string, error) {
 	}
 
 	var meta xdr.TransactionResultMeta
-	if err := xdr.SafeUnmarshal(data, &meta); err != nil {
+	if err = xdr.SafeUnmarshal(data, &meta); err != nil {
 		return nil, err
 	}
 
@@ -802,13 +815,13 @@ func extractLedgerKeys(metaXdr string) ([]string, error) {
 		for _, c := range changes {
 			switch c.Type {
 			case xdr.LedgerEntryChangeTypeLedgerEntryCreated:
-				k, err := c.Created.LedgerKey()
-				if err == nil {
+				k, keyErr := c.Created.LedgerKey()
+				if keyErr == nil {
 					addKey(k)
 				}
 			case xdr.LedgerEntryChangeTypeLedgerEntryUpdated:
-				k, err := c.Updated.LedgerKey()
-				if err == nil {
+				k, keyErr := c.Updated.LedgerKey()
+				if keyErr == nil {
 					addKey(k)
 				}
 			case xdr.LedgerEntryChangeTypeLedgerEntryRemoved:
@@ -816,8 +829,8 @@ func extractLedgerKeys(metaXdr string) ([]string, error) {
 					addKey(*c.Removed)
 				}
 			case xdr.LedgerEntryChangeTypeLedgerEntryState:
-				k, err := c.State.LedgerKey()
-				if err == nil {
+				k, keyErr := c.State.LedgerKey()
+				if keyErr == nil {
 					addKey(k)
 				}
 			}
@@ -1081,6 +1094,7 @@ func init() {
 	debugCmd.Flags().StringVar(&compareNetworkFlag, "compare-network", "", "Network to compare against (testnet, mainnet, futurenet)")
 	debugCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	debugCmd.Flags().StringVar(&wasmPath, "wasm", "", "Path to local WASM file for local replay (no network required)")
+	debugCmd.Flags().BoolVar(&wasmOptimizeFlag, "optimize", false, "Run dead-code elimination on local WASM before replay")
 	debugCmd.Flags().StringSliceVar(&args, "args", []string{}, "Mock arguments for local replay (JSON array of strings)")
 	debugCmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "Disable local ledger state caching")
 	debugCmd.Flags().BoolVar(&demoMode, "demo", false, "Print sample output (no network) - for testing color detection")
@@ -1125,7 +1139,7 @@ func displaySourceLocation(loc *simulator.SourceLocation) {
 	content, err := os.ReadFile(loc.File)
 	if err != nil {
 		// Try to find in current directory or src
-		if c, err := os.ReadFile(filepath.Join("src", loc.File)); err == nil {
+		if c, readErr := os.ReadFile(filepath.Join("src", loc.File)); readErr == nil {
 			content = c
 		} else {
 			return

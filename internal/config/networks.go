@@ -43,7 +43,7 @@ func LoadCustomNetworks() (*CustomNetworkConfig, error) {
 	}
 
 	// If file doesn't exist, return empty config
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
 		return &CustomNetworkConfig{
 			Networks: make(map[string]rpc.NetworkConfig),
 		}, nil
@@ -55,7 +55,7 @@ func LoadCustomNetworks() (*CustomNetworkConfig, error) {
 	}
 
 	var config CustomNetworkConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err = json.Unmarshal(data, &config); err != nil {
 		return nil, errors.WrapConfigError("failed to parse config file", err)
 	}
 
@@ -75,7 +75,7 @@ func SaveCustomNetworks(config *CustomNetworkConfig) error {
 
 	// Ensure config directory exists
 	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0700); err != nil {
+	if err = os.MkdirAll(configDir, 0700); err != nil {
 		return errors.WrapConfigError("failed to create config directory", err)
 	}
 
@@ -85,7 +85,7 @@ func SaveCustomNetworks(config *CustomNetworkConfig) error {
 	}
 
 	// Write with restricted permissions (owner only)
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	if err = os.WriteFile(configPath, data, 0600); err != nil {
 		return errors.WrapConfigError("failed to write config file", err)
 	}
 

@@ -69,7 +69,6 @@ type Frame struct {
 // Parser handles DWARF debug information extraction
 type Parser struct {
 	data       *dwarf.Data
-	reader     *dwarf.Reader
 	binaryType string // "wasm", "elf", "macho", "pe"
 }
 
@@ -127,10 +126,10 @@ func parseWASM(data []byte) (*Parser, error) {
 	
 	// Look for .debug_info section; dwarf.New expects the 8 canonical DWARF sections.
 	if infoSection, ok := sections[".debug_info"]; ok {
-		abbrev, _ := sections[".debug_abbrev"]
-		line, _ := sections[".debug_line"]
-		ranges, _ := sections[".debug_ranges"]
-		str, _ := sections[".debug_str"]
+		abbrev := sections[".debug_abbrev"]
+		line := sections[".debug_line"]
+		ranges := sections[".debug_ranges"]
+		str := sections[".debug_str"]
 		dwarfData, err = dwarf.New(abbrev, nil, nil, infoSection, line, nil, ranges, str)
 	}
 

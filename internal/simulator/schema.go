@@ -27,9 +27,18 @@ type SimulationRequest struct {
 	MockBaseFee     *uint32           `json:"mock_base_fee,omitempty"`
 	MockGasPrice    *uint64           `json:"mock_gas_price,omitempty"`
 
+	//New: restorePreamble for state restoration operations
+	RestorePreamble map[string]interface{} `json:"restore_preamble,omitempty"`
+	
 	AuthTraceOpts       *AuthTraceOptions      `json:"auth_trace_opts,omitempty"`
 	CustomAuthCfg       map[string]interface{} `json:"custom_auth_config,omitempty"`
 	ResourceCalibration *ResourceCalibration   `json:"resource_calibration,omitempty"`
+
+	// SandboxNativeTokenCapStroops, when set, enforces a hard cap on the sum of native
+	// (XLM) payment amounts in the envelope. Used in local/sandbox mode to simulate
+	// realistic economic constraints during integration tests. Exceeding the cap
+	// causes Run() to return an error before invoking the simulator binary.
+	SandboxNativeTokenCapStroops *uint64 `json:"sandbox_native_token_cap_stroops,omitempty"`
 }
 
 type ResourceCalibration struct {
@@ -147,7 +156,7 @@ func OpenDB() (*DB, error) {
 	}
 	dbPath := filepath.Join(home, ".erst", "sessions.db")
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, err
 	}
 
@@ -157,7 +166,7 @@ func OpenDB() (*DB, error) {
 	}
 
 	db := &DB{conn: conn}
-	if err := db.init(); err != nil {
+	if err = db.init(); err != nil {
 		return nil, err
 	}
 
@@ -241,9 +250,9 @@ func (db *DB) SearchSessions(filters SearchFilters) ([]Session, error) {
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		err := rows.Scan(&s.ID, &s.TxHash, &s.Network, &s.Timestamp, &s.Error, &s.Events, &s.Logs)
-		if err != nil {
-			return nil, err
+		scanErr := rows.Scan(&s.ID, &s.TxHash, &s.Network, &s.Timestamp, &s.Error, &s.Events, &s.Logs)
+		if scanErr != nil {
+			return nil, scanErr
 		}
 		sessions = append(sessions, s)
 	}

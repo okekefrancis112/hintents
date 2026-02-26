@@ -18,8 +18,9 @@ var (
 )
 
 var rpcCmd = &cobra.Command{
-	Use:   "rpc",
-	Short: "Manage and monitor RPC endpoints",
+	Use:     "rpc",
+	GroupID: "utility",
+	Short:   "Manage and monitor RPC endpoints",
 }
 
 var rpcHealthCmd = &cobra.Command{

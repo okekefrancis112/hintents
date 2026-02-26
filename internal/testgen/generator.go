@@ -58,8 +58,8 @@ func (g *TestGenerator) GenerateTests(ctx context.Context, txHash string, lang s
 	case "rust":
 		return g.GenerateRustTest(testData)
 	case "both":
-		if err := g.GenerateGoTest(testData); err != nil {
-			return err
+		if goErr := g.GenerateGoTest(testData); goErr != nil {
+			return goErr
 		}
 		return g.GenerateRustTest(testData)
 	default:
@@ -101,8 +101,8 @@ func (g *TestGenerator) GenerateGoTest(data *TestData) error {
 
 	// Create output directory
 	outputDir := filepath.Join(g.OutputDir, "internal", "simulator", "regression_tests")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
+	if mkdirErr := os.MkdirAll(outputDir, 0755); mkdirErr != nil {
+		return fmt.Errorf("failed to create output directory: %w", mkdirErr)
 	}
 
 	// Create output file
@@ -114,8 +114,8 @@ func (g *TestGenerator) GenerateGoTest(data *TestData) error {
 	defer file.Close()
 
 	// Execute template
-	if err := tmpl.Execute(file, data); err != nil {
-		return fmt.Errorf("failed to execute Go template: %w", err)
+	if execErr := tmpl.Execute(file, data); execErr != nil {
+		return fmt.Errorf("failed to execute Go template: %w", execErr)
 	}
 
 	fmt.Printf("Generated Go test: %s\n", filename)
@@ -131,8 +131,8 @@ func (g *TestGenerator) GenerateRustTest(data *TestData) error {
 
 	// Create output directory
 	outputDir := filepath.Join(g.OutputDir, "simulator", "tests", "regression")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
+	if mkdirErr := os.MkdirAll(outputDir, 0755); mkdirErr != nil {
+		return fmt.Errorf("failed to create output directory: %w", mkdirErr)
 	}
 
 	// Create output file
@@ -144,8 +144,8 @@ func (g *TestGenerator) GenerateRustTest(data *TestData) error {
 	defer file.Close()
 
 	// Execute template
-	if err := tmpl.Execute(file, data); err != nil {
-		return fmt.Errorf("failed to execute Rust template: %w", err)
+	if execErr := tmpl.Execute(file, data); execErr != nil {
+		return fmt.Errorf("failed to execute Rust template: %w", execErr)
 	}
 
 	fmt.Printf("Generated Rust test: %s\n", filename)

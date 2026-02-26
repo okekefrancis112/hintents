@@ -23,8 +23,9 @@ type DependencyStatus struct {
 }
 
 var doctorCmd = &cobra.Command{
-	Use:   "doctor",
-	Short: "Diagnose development environment setup",
+	Use:     "doctor",
+	GroupID: "development",
+	Short:   "Diagnose development environment setup",
 	Long: `Check the status of required dependencies and development tools.
 
 This command verifies:
@@ -43,17 +44,17 @@ Use this to troubleshoot installation issues or verify your setup.`,
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	verbose, _ := cmd.Flags().GetBool("verbose")
+	verboseMode, _ := cmd.Flags().GetBool("verbose")
 
 	fmt.Println("Erst Environment Diagnostics")
 	fmt.Println("=============================")
 	fmt.Println()
 
 	dependencies := []DependencyStatus{
-		checkGo(verbose),
-		checkRust(verbose),
-		checkCargo(verbose),
-		checkSimulator(verbose),
+		checkGo(verboseMode),
+		checkRust(verboseMode),
+		checkCargo(verboseMode),
+		checkSimulator(verboseMode),
 	}
 
 	// Print results
@@ -73,7 +74,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println()
 
-		if verbose && dep.Path != "" {
+		if verboseMode && dep.Path != "" {
 			fmt.Printf("  Path: %s\n", dep.Path)
 		}
 
@@ -109,9 +110,9 @@ func checkGo(verbose bool) DependencyStatus {
 	dep.Path = goPath
 
 	// Get version
-	cmd := exec.Command("go", "version")
-	output, err := cmd.Output()
-	if err == nil {
+	goCmd := exec.Command("go", "version")
+	output, outErr := goCmd.Output()
+	if outErr == nil {
 		version := strings.TrimSpace(string(output))
 		// Extract just the version number (e.g., "go1.21.0" from "go version go1.21.0 linux/amd64")
 		parts := strings.Fields(version)
@@ -138,9 +139,9 @@ func checkRust(verbose bool) DependencyStatus {
 	dep.Path = rustcPath
 
 	// Get version
-	cmd := exec.Command("rustc", "--version")
-	output, err := cmd.Output()
-	if err == nil {
+	rustcCmd := exec.Command("rustc", "--version")
+	output, outErr := rustcCmd.Output()
+	if outErr == nil {
 		version := strings.TrimSpace(string(output))
 		// Extract version (e.g., "rustc 1.75.0" from "rustc 1.75.0 (82e1608df 2023-12-21)")
 		parts := strings.Fields(version)
@@ -167,9 +168,9 @@ func checkCargo(verbose bool) DependencyStatus {
 	dep.Path = cargoPath
 
 	// Get version
-	cmd := exec.Command("cargo", "--version")
-	output, err := cmd.Output()
-	if err == nil {
+	cargoCmd := exec.Command("cargo", "--version")
+	output, outErr := cargoCmd.Output()
+	if outErr == nil {
 		version := strings.TrimSpace(string(output))
 		// Extract version (e.g., "cargo 1.75.0" from "cargo 1.75.0 (1d8b05cdd 2023-11-20)")
 		parts := strings.Fields(version)
@@ -202,7 +203,7 @@ func checkSimulator(verbose bool) DependencyStatus {
 	}
 
 	// Also check in PATH
-	if simPath, err := exec.LookPath("erst-sim"); err == nil {
+	if simPath, lookErr := exec.LookPath("erst-sim"); lookErr == nil {
 		dep.Installed = true
 		dep.Path = simPath
 		dep.Version = "in PATH"
@@ -211,7 +212,7 @@ func checkSimulator(verbose bool) DependencyStatus {
 
 	// Check relative paths
 	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
+		if _, statErr := os.Stat(path); statErr == nil {
 			absPath, _ := filepath.Abs(path)
 			dep.Installed = true
 			dep.Path = absPath

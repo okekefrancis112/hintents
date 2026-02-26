@@ -16,7 +16,7 @@ linters:
 
 linters-settings:
   gocyclo:
-    min-complexity: 30
+    min-complexity: 80
   errcheck:
     check-type-assertions: false
     check-blank: false

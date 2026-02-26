@@ -46,8 +46,8 @@ func TestEncodeLedgerKey(t *testing.T) {
 
 	// Verify we can decode it back
 	var decodedKey xdr.LedgerKey
-	if err := decodedKey.UnmarshalBinary(decoded); err != nil {
-		t.Fatalf("Failed to unmarshal decoded key: %v", err)
+	if unmarshalErr := decodedKey.UnmarshalBinary(decoded); unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal decoded key: %v", unmarshalErr)
 	}
 
 	if decodedKey.Type != xdr.LedgerEntryTypeAccount {
@@ -83,8 +83,8 @@ func TestEncodeLedgerEntry(t *testing.T) {
 
 	// Verify we can decode it back
 	var decodedEntry xdr.LedgerEntry
-	if err := decodedEntry.UnmarshalBinary(decoded); err != nil {
-		t.Fatalf("Failed to unmarshal decoded entry: %v", err)
+	if unmarshalErr := decodedEntry.UnmarshalBinary(decoded); unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal decoded entry: %v", unmarshalErr)
 	}
 
 	if decodedEntry.Data.Type != xdr.LedgerEntryTypeAccount {
@@ -225,8 +225,8 @@ func TestExtractFromChanges(t *testing.T) {
 		}
 
 		var key xdr.LedgerKey
-		if err := key.UnmarshalBinary(keyBytes); err != nil {
-			t.Fatalf("Failed to unmarshal key: %v", err)
+		if unmarshalErr := key.UnmarshalBinary(keyBytes); unmarshalErr != nil {
+			t.Fatalf("Failed to unmarshal key: %v", unmarshalErr)
 		}
 
 		if key.Type != xdr.LedgerEntryTypeAccount {
@@ -240,8 +240,8 @@ func TestExtractFromChanges(t *testing.T) {
 		}
 
 		var decodedEntry xdr.LedgerEntry
-		if err := decodedEntry.UnmarshalBinary(entryBytes); err != nil {
-			t.Fatalf("Failed to unmarshal entry: %v", err)
+		if unmarshalErr := decodedEntry.UnmarshalBinary(entryBytes); unmarshalErr != nil {
+			t.Fatalf("Failed to unmarshal entry: %v", unmarshalErr)
 		}
 
 		if decodedEntry.Data.Account.Balance != 5000000 {

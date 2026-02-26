@@ -28,8 +28,9 @@ var (
 // provides a deterministic estimate based on the simulator's reported resource usage, intended as a
 // safe lower bound / guidance for setting fee/budget.
 var dryRunCmd = &cobra.Command{
-	Use:   "dry-run <tx.xdr>",
-	Short: "Pre-submission dry run to estimate Soroban transaction cost",
+	Use:     "dry-run <tx.xdr>",
+	GroupID: "testing",
+	Short:   "Pre-submission dry run to estimate Soroban transaction cost",
 	Long: `Replay a local transaction envelope (not yet on chain) against current network state.
 
 This command:
@@ -76,7 +77,7 @@ func runDryRun(cmd *cobra.Command, args []string) error {
 		return errors.WrapUnmarshalFailed(err, "envelope base64")
 	}
 	var envelope xdr.TransactionEnvelope
-	if err := xdr.SafeUnmarshal(envBytes, &envelope); err != nil {
+	if err = xdr.SafeUnmarshal(envBytes, &envelope); err != nil {
 		return errors.WrapUnmarshalFailed(err, "TransactionEnvelope")
 	}
 
@@ -97,7 +98,7 @@ func runDryRun(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	// Preferred path: Soroban RPC preflight (simulateTransaction)
-	if preflight, err := client.SimulateTransaction(ctx, envXdrB64); err == nil {
+	if preflight, simErr := client.SimulateTransaction(ctx, envXdrB64); simErr == nil {
 		fee := preflight.Result.MinResourceFee
 		cpu := preflight.Result.Cost.CpuInsns
 		mem := preflight.Result.Cost.MemBytes

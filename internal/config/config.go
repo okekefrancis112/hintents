@@ -83,7 +83,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// If file doesn't exist, return default config
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
 		return DefaultConfig(), nil
 	}
 
@@ -93,7 +93,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config := DefaultConfig()
-	if err := json.Unmarshal(data, config); err != nil {
+	if err = json.Unmarshal(data, config); err != nil {
 		return nil, errors.WrapConfigError("failed to parse config file", err)
 	}
 
@@ -256,7 +256,7 @@ func SaveConfig(config *Config) error {
 
 	// Ensure config directory exists
 	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0700); err != nil {
+	if err = os.MkdirAll(configDir, 0700); err != nil {
 		return errors.WrapConfigError("failed to create config directory", err)
 	}
 
@@ -266,7 +266,7 @@ func SaveConfig(config *Config) error {
 	}
 
 	// Write with restricted permissions (owner only)
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	if err = os.WriteFile(configPath, data, 0600); err != nil {
 		return errors.WrapConfigError("failed to write config file", err)
 	}
 

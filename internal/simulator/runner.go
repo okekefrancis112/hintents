@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"github.com/dotandev/hintents/internal/errors"
 	"github.com/dotandev/hintents/internal/ipc"
@@ -140,9 +141,31 @@ func abs(path string) string {
 	return path
 }
 
+// getSandboxNativeTokenCap returns the effective sandbox native token cap (stroops):
+// request field if set, otherwise env ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS.
+func getSandboxNativeTokenCap(req *SimulationRequest) *uint64 {
+	if req != nil && req.SandboxNativeTokenCapStroops != nil {
+		return req.SandboxNativeTokenCapStroops
+	}
+	if v := os.Getenv("ERST_SANDBOX_NATIVE_TOKEN_CAP_STROOPS"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			return &n
+		}
+	}
+	return nil
+}
+
 // -------------------- Execution --------------------
 
 func (r *Runner) Run(req *SimulationRequest) (*SimulationResponse, error) {
+	// Enforce sandbox native token cap when set (local/sandbox economic constraint)
+	if capStroops := getSandboxNativeTokenCap(req); capStroops != nil {
+		if err := EnforceSandboxNativeTokenCap(req.EnvelopeXdr, *capStroops); err != nil {
+			logger.Logger.Error("Sandbox native token cap exceeded", "error", err)
+			return nil, err
+		}
+	}
+
 	// Validate request before processing
 	if r.Validator != nil {
 		if err := r.Validator.ValidateRequest(req); err != nil {
@@ -194,8 +217,7 @@ func (r *Runner) Run(req *SimulationRequest) (*SimulationResponse, error) {
 	// If the simulator returned a logical error inside the response payload,
 	// classify it into a unified ErstError before returning to the caller.
 	if resp.Error != "" {
-		ipcErr := ipc.Error{Message: resp.Error}
-		classified := ipcErr.ToErstError()
+		classified := (&ipc.Error{Message: resp.Error}).ToErstError()
 		logger.Logger.Error("Simulator returned error",
 			"code", classified.Code,
 			"original", classified.OriginalError,
