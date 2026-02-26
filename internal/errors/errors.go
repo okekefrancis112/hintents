@@ -90,110 +90,186 @@ func (e *RateLimitError) Is(target error) bool {
 
 // Wrap functions for consistent error wrapping
 func WrapTransactionNotFound(err error) error {
-	return fmt.Errorf("%w: %w", ErrTransactionNotFound, err)
+	return &ErstError{
+		 Code:    ErstLedgerNotFound,
+		 Message: "transaction not found",
+		 OrigErr: err,
+	}
 }
 
 func WrapRPCConnectionFailed(err error) error {
-	return fmt.Errorf("%w: %w", ErrRPCConnectionFailed, err)
+	return &ErstError{
+		 Code:    ErstRPCConnectionFailed,
+		 Message: "RPC connection failed",
+		 OrigErr: err,
+	}
 }
 
 func WrapSimulatorNotFound(msg string) error {
-	return fmt.Errorf("%w: %s", ErrSimulatorNotFound, msg)
+	return &ErstError{
+		 Code:    ErstSimulatorNotFound,
+		 Message: msg,
+	}
 }
 
 func WrapSimulationFailed(err error, stderr string) error {
-	return fmt.Errorf("%w: %w, stderr: %s", ErrSimulationFailed, err, stderr)
+	return &ErstError{
+		 Code:    ErstSimulationFailed,
+		 Message: stderr,
+		 OrigErr: err,
+	}
 }
 
 func WrapInvalidNetwork(network string) error {
-	return fmt.Errorf("%w: %s. Must be one of: testnet, mainnet, futurenet", ErrInvalidNetwork, network)
+	return &ErstError{
+		 Code:    ErstInvalidNetwork,
+		 Message: network + ". Must be one of: testnet, mainnet, futurenet",
+	}
 }
 
 func WrapMarshalFailed(err error) error {
-	return fmt.Errorf("%w: %w", ErrMarshalFailed, err)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: "failed to marshal request",
+		 OrigErr: err,
+	}
 }
 
 func WrapUnmarshalFailed(err error, output string) error {
-	return fmt.Errorf("%w: %w, output: %s", ErrUnmarshalFailed, err, output)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: output,
+		 OrigErr: err,
+	}
 }
 
 func WrapSimulationLogicError(msg string) error {
-	return fmt.Errorf("%w: %s", ErrSimulationLogicError, msg)
+	return &ErstError{
+		 Code:    ErstSimulationLogicError,
+		 Message: msg,
+	}
 }
 
 func WrapRPCTimeout(err error) error {
-	return fmt.Errorf("%w: %w", ErrRPCTimeout, err)
+	return &ErstError{
+		 Code:    ErstRPCTimeout,
+		 Message: "RPC request timed out",
+		 OrigErr: err,
+	}
 }
 
 func WrapAllRPCFailed() error {
-	return ErrAllRPCFailed
+	return &ErstError{
+		 Code:    ErstAllRPCFailed,
+		 Message: "all RPC endpoints failed",
+	}
 }
 
 func WrapRPCError(url string, msg string, code int) error {
-	return fmt.Errorf("%w from %s: %s (code %d)", ErrRPCError, url, msg, code)
+	return &ErstError{
+		 Code:    ErstRPCError,
+		 Message: fmt.Sprintf("from %s: %s (code %d)", url, msg, code),
+	}
 }
 
 func WrapSimCrash(err error, stderr string) error {
-	if stderr != "" {
-		return fmt.Errorf("%w: %w, stderr: %s", ErrSimCrash, err, stderr)
+	msg := stderr
+	if msg == "" && err != nil {
+		 msg = err.Error()
 	}
-	return fmt.Errorf("%w: %w", ErrSimCrash, err)
+	return &ErstError{
+		 Code:    ErstSimCrash,
+		 Message: msg,
+		 OrigErr: err,
+	}
 }
 
 func WrapValidationError(msg string) error {
-	return fmt.Errorf("%w: %s", ErrValidationFailed, msg)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: msg,
+	}
 }
 
 func WrapProtocolUnsupported(version uint32) error {
-	return fmt.Errorf("%w: %d", ErrProtocolUnsupported, version)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: fmt.Sprintf("unsupported protocol version: %d", version),
+	}
 }
 
 func WrapCliArgumentRequired(arg string) error {
-	return fmt.Errorf("%w: --%s", ErrArgumentRequired, arg)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: "--" + arg,
+	}
 }
 
 func WrapAuditLogInvalid(msg string) error {
-	return fmt.Errorf("%w: %s", ErrAuditLogInvalid, msg)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: msg,
+	}
 }
 
 func WrapSessionNotFound(sessionID string) error {
-	return fmt.Errorf("%w: %s", ErrSessionNotFound, sessionID)
+	return &ErstError{
+		 Code:    ErstValidationFailed,
+		 Message: sessionID,
+	}
 }
 
 func WrapUnauthorized(msg string) error {
 	if msg != "" {
-		return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
+		 return &ErstError{
+			  Code:    ErstUnauthorized,
+			  Message: msg,
+		 }
 	}
-	return ErrUnauthorized
+	return &ErstError{
+		 Code:    ErstUnauthorized,
+		 Message: "unauthorized",
+	}
 }
 
 func WrapLedgerNotFound(sequence uint32) error {
-	return &LedgerNotFoundError{
-		Sequence: sequence,
-		Message:  fmt.Sprintf("%v: ledger %d not found (may be archived or not yet created)", ErrLedgerNotFound, sequence),
+	return &ErstError{
+		 Code:    ErstLedgerNotFound,
+		 Message: fmt.Sprintf("ledger %d not found (may be archived or not yet created)", sequence),
 	}
 }
 
 func WrapLedgerArchived(sequence uint32) error {
-	return &LedgerArchivedError{
-		Sequence: sequence,
-		Message:  fmt.Sprintf("%v: ledger %d has been archived and is no longer available", ErrLedgerArchived, sequence),
+	return &ErstError{
+		 Code:    ErstLedgerArchived,
+		 Message: fmt.Sprintf("ledger %d has been archived and is no longer available", sequence),
 	}
 }
 
 func WrapRateLimitExceeded() error {
-	return &RateLimitError{
-		Message: fmt.Sprintf("%v, please try again later", ErrRateLimitExceeded),
+	return &ErstError{
+		 Code:    ErstRateLimitExceeded,
+		 Message: "rate limit exceeded, please try again later",
 	}
 }
 
 func WrapConfigError(msg string, err error) error {
 	if err != nil {
-		return fmt.Errorf("%w: %s: %v", ErrConfigFailed, msg, err)
+		 return &ErstError{
+			  Code:    ErstConfigFailed,
+			  Message: msg + ": " + err.Error(),
+			  OrigErr: err,
+		 }
 	}
-	return fmt.Errorf("%w: %s", ErrConfigFailed, msg)
+	return &ErstError{
+		 Code:    ErstConfigFailed,
+		 Message: msg,
+	}
 }
 
 func WrapNetworkNotFound(network string) error {
-	return fmt.Errorf("%w: %s", ErrNetworkNotFound, network)
+	return &ErstError{
+		 Code:    ErstNetworkNotFound,
+		 Message: network,
+	}
 }
