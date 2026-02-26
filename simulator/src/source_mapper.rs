@@ -143,7 +143,8 @@ impl SourceMapper {
                     let location = SourceLocation {
                         file: file_name,
                         line: line.get() as u32,
-                        column,
+                        column: column.unwrap_or(0),
+                        column_end: None,
                     };
 
                     if let Some((start, prev_location)) = pending.replace((row.address(), location))
@@ -263,7 +264,8 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 10,
-                    column: Some(1),
+                    column: 1,
+                    column_end: None,
                 },
             },
             CachedLineEntry {
@@ -272,7 +274,8 @@ mod tests {
                 location: SourceLocation {
                     file: "lib.rs".into(),
                     line: 20,
-                    column: Some(2),
+                    column: 2,
+                    column_end: None,
                 },
             },
         ]);
@@ -293,7 +296,8 @@ mod tests {
             location: SourceLocation {
                 file: "mod.rs".into(),
                 line: 7,
-                column: None,
+                column: 0,
+                column_end: None,
             },
         }]);
 
@@ -345,7 +349,8 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: Some(10),
+                column: 10,
+                column_end: None,
             },
         );
 
