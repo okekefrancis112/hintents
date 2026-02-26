@@ -7,6 +7,8 @@ mod config;
 mod gas_optimizer;
 mod git_detector;
 mod runner;
+mod snapshot;
+mod snapshot;
 mod source_map_cache;
 mod source_mapper;
 mod stack_trace;
@@ -14,7 +16,6 @@ mod types;
 mod vm;
 mod wasm;
 mod wasm_types;
-mod snapshot;
 
 use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
 use crate::source_mapper::SourceMapper;
@@ -168,17 +169,20 @@ fn execute_operations(
         match &op.body {
             OperationBody::InvokeHostFunction(invoke_op) => {
                 logs.push("Executing InvokeHostFunction...".to_string());
-                
+
                 // Check for signature verification mock
-                if let Some(mock_result) = check_signature_verification_mocks(&request, &invoke_op.host_function) {
+                if let Some(mock_result) =
+                    check_signature_verification_mocks(&request, &invoke_op.host_function)
+                {
                     logs.push(format!("Mock signature verification: {:?}", mock_result));
                     if !mock_result {
-                        return Err(soroban_env_host::HostError::from(
-                            (soroban_env_host::xdr::ScErrorType::Context, soroban_env_host::xdr::ScErrorCode::InvalidInput)
-                        ));
+                        return Err(soroban_env_host::HostError::from((
+                            soroban_env_host::xdr::ScErrorType::Context,
+                            soroban_env_host::xdr::ScErrorCode::InvalidInput,
+                        )));
                     }
                 }
-                
+
                 let val = host.invoke_function(invoke_op.host_function.clone())?;
                 logs.push(format!("Result: {val:?}"));
                 check_memory_limit_or_panic(host, memory_limit);
@@ -240,7 +244,7 @@ fn check_signature_verification_mocks(
 ) -> Option<bool> {
     // Check if signature verification mocking is enabled
     let mock_result = request.mock_signature_verification?;
-    
+
     // Check if this is a signature verification host function
     // Note: Current soroban-env-host version only has InvokeContract, CreateContract, and UploadContractWasm
     // Signature verification functions may be handled at a different level or in newer versions
@@ -249,7 +253,10 @@ fn check_signature_verification_mocks(
         _ => {
             // Check if the function name contains signature verification related terms
             let function_name = host_function.name();
-            if function_name.contains("Verify") || function_name.contains("Signature") || function_name.contains("Ed25519") {
+            if function_name.contains("Verify")
+                || function_name.contains("Signature")
+                || function_name.contains("Ed25519")
+            {
                 Some(mock_result)
             } else {
                 None
@@ -307,6 +314,17 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
             }
         })
         .collect()
+}
+
+fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
+    if data.contains("Instruction:") {
+        let parts: Vec<&str> = data.split("Instruction:").collect();
+        if parts.len() > 1 {
+            let instr = parts[1].trim().trim_matches(|c| c == '"' || c == ' ');
+            return Some(instr.to_string());
+        }
+    }
+    None
 }
 
 /// Main entry point for the erst simulator.
@@ -447,7 +465,8 @@ fn main() {
                 if let Err(e) = vm::enforce_soroban_compatibility(&wasm_bytes) {
                     return send_error(format!("Strict VM enforcement failed: {}", e));
                 }
-                let mapper = SourceMapper::new_with_options(wasm_bytes, request.no_cache.unwrap_or(false));
+                let mapper =
+                    SourceMapper::new_with_options(wasm_bytes, request.no_cache.unwrap_or(false));
                 if mapper.has_debug_symbols() {
                     eprintln!("Debug symbols found in WASM");
                     Some(mapper)
@@ -485,11 +504,9 @@ fn main() {
         }
     }
     // --- END: Local WASM Loading Integration ---
-
-    let mut loaded_entries_count = 0;
-
     // Populate Host Storage
-    if let Some(entries) = &request.ledger_entries {
+    let snapshot = if let Some(entries) = &request.ledger_entries {
+        let snap = snapshot::LedgerSnapshot::new();
         for (key_xdr, entry_xdr) in entries {
             // Decode Key
             let _key = match base64::engine::general_purpose::STANDARD.decode(key_xdr) {
@@ -530,9 +547,13 @@ fn main() {
             // TODO: Inject into host storage.
             // For MVP, we verify we can parse them.
             eprintln!("Parsed Ledger Entry: Key={:?}, Entry={:?}", _key, _entry);
-            loaded_entries_count += 1;
         }
-    }
+        snap
+    } else {
+        snapshot::LedgerSnapshot::new()
+    };
+
+    let loaded_entries_count = snapshot.len();
 
     // Extract Operations and Simulate
     let operations = match &envelope {
@@ -546,7 +567,13 @@ fn main() {
     // Wrap the operation execution in panic protection
     let mut coverage = CoverageTracker::default();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        execute_operations(&host, operations, &request, request.memory_limit, &mut coverage)
+        execute_operations(
+            &host,
+            operations,
+            &request,
+            request.memory_limit,
+            &mut coverage,
+        )
     }));
 
     // Budget and Reporting
@@ -661,6 +688,8 @@ fn main() {
                                     contract_id,
                                     topics,
                                     data,
+                                    in_successful_contract_call: !event.failed_call,
+                                    wasm_instruction,
                                     in_successful_contract_call: !event.failed_call,
                                     wasm_instruction,
                                 }
@@ -783,13 +812,121 @@ fn main() {
             };
 
             let wasm_offset = extract_wasm_offset(&error_debug);
+
+            // Extract both raw event strings and structured diagnostic events
+            let (events, diagnostic_events): (Vec<String>, Vec<DiagnosticEvent>) = match host
+                .get_events()
+            {
+                Ok(evs) => {
+                    let raw_events: Vec<String> =
+                        evs.0.iter().map(|e| format!("{:?}", e)).collect();
+                    let diag_events: Vec<DiagnosticEvent> = evs
+                        .0
+                        .iter()
+                        .map(|event| {
+                            let event_type = match &event.event.type_ {
+                                soroban_env_host::xdr::ContractEventType::Contract => "contract",
+                                soroban_env_host::xdr::ContractEventType::System => "system",
+                                soroban_env_host::xdr::ContractEventType::Diagnostic => {
+                                    "diagnostic"
+                                }
+                            }
+                            .to_string();
+
+                            let contract_id = event
+                                .event
+                                .contract_id
+                                .as_ref()
+                                .map(|contract_id| format!("{:?}", contract_id));
+
+                            let (topics, data) = match &event.event.body {
+                                soroban_env_host::xdr::ContractEventBody::V0(v0) => {
+                                    let topics: Vec<String> =
+                                        v0.topics.iter().map(|t| format!("{:?}", t)).collect();
+                                    let data = format!("{:?}", v0.data);
+                                    (topics, data)
+                                }
+                            };
+
+                            let wasm_instruction = extract_wasm_instruction(&topics, &data);
+                            DiagnosticEvent {
+                                event_type,
+                                contract_id,
+                                topics,
+                                data,
+                                wasm_instruction,
+                                in_successful_contract_call: !event.failed_call,
+                            }
+                        })
+                        .collect();
+                    (raw_events, diag_events)
+                }
+                Err(_) => (
+                    vec!["Failed to retrieve events".to_string()],
+                    Vec::<DiagnosticEvent>::new(),
+                ),
+            };
+
+            // Capture categorized events for analyzer
+            let categorized_events = match host.get_events() {
+                Ok(evs) => categorize_events(&evs),
+                Err(_) => vec![],
+            };
+
+            // Heuristic to ignore Rust stdlib panic wrappers and find the actual source point
+            let mut user_panic_point = None;
+            for event in &diagnostic_events {
+                let mut combined_text = event.data.clone();
+                for topic in &event.topics {
+                    combined_text.push_str(" ");
+                    combined_text.push_str(topic);
+                }
+
+                if combined_text.contains("panicked")
+                    || combined_text.contains("Error")
+                    || combined_text.contains("Trap")
+                {
+                    if !combined_text.contains("core/src/panicking")
+                        && !combined_text.contains("std::rt")
+                        && !combined_text.contains("rust_begin_unwind")
+                        && !combined_text.contains("compiler_builtins")
+                    {
+                        if combined_text.contains(".rs")
+                            && !combined_text.contains("soroban-env-host")
+                        {
+                            user_panic_point = Some(combined_text.replace("\"", ""));
+                        }
+                    }
+                }
+            }
+
+            let details = if let Some(ref point) = user_panic_point {
+                format!(
+                    "Contract execution failed with host error: {}. Panic point: {}",
+                    decoded_msg, point
+                )
+            } else {
+                format!("Contract execution failed with host error: {}", decoded_msg)
+            };
+
+            let structured_error = StructuredError {
+                error_type: "HostError".to_string(),
+                message: decoded_msg,
+                details: Some(details),
+            };
+
             let source_location =
                 if let (Some(offset), Some(mapper)) = (wasm_offset, &source_mapper) {
                     mapper
                         .map_wasm_offset_to_source(offset)
                         .and_then(|loc| serde_json::to_string(&loc).ok())
                 } else {
-                    None
+                    user_panic_point.or_else(|| {
+                        source_mapper
+                            .as_ref()
+                            .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
+                            .and_then(|loc| serde_json::to_string(&loc).ok())
+                    })
                 };
 
             let response = SimulationResponse {
@@ -803,9 +940,9 @@ fn main() {
                 error_code: None,
                 lcov_report: lcov_report.clone(),
                 lcov_report_path: lcov_report_path.clone(),
-                events: vec![],
-                diagnostic_events: vec![],
-                categorized_events: vec![],
+                events,
+                diagnostic_events,
+                categorized_events,
                 logs: vec![format!("Stack trace:\n{}", trace_display)],
                 flamegraph: None,
                 optimization_report: None,
@@ -1280,4 +1417,3 @@ mod tests {
         assert!(report.contains("FNH:2"));
     }
 }
-

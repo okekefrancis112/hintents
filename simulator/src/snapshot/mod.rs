@@ -1,6 +1,8 @@
 // Copyright 2025 Erst Users
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Ledger snapshot and storage loading utilities for Soroban simulation.
 //!
 //! This module provides reusable functionality for:
