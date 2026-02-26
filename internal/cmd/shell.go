@@ -74,11 +74,17 @@ func runShell(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Initialize RPC client
-	var rpcClient *rpc.Client
+	opts := []rpc.ClientOption{rpc.WithNetwork(rpc.Network(shellNetworkFlag))}
+	if shellRPCToken != "" {
+		opts = append(opts, rpc.WithToken(shellRPCToken))
+	}
 	if shellRPCURLFlag != "" {
-		rpcClient = rpc.NewClientWithURLOption(shellRPCURLFlag, rpc.Network(shellNetworkFlag), shellRPCToken)
-	} else {
-		rpcClient = rpc.NewClientDefault(rpc.Network(shellNetworkFlag), shellRPCToken)
+		opts = append(opts, rpc.WithHorizonURL(shellRPCURLFlag))
+	}
+
+	rpcClient, err := rpc.NewClient(opts...)
+	if err != nil {
+		return errors.WrapValidationError(fmt.Sprintf("failed to create RPC client: %v", err))
 	}
 
 	// Initialize simulator runner

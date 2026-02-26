@@ -77,7 +77,7 @@ func (c *Checker) CheckForUpdates() {
 	}
 
 	// Update cache with the latest version (banner is shown from cache at next run start)
-	if cacheErr := c.updateCache(latestVersion); cacheErr != nil {
+	if err := c.updateCache(latestVersion); err != nil {
 		// Silent failure
 		return
 	}
@@ -96,7 +96,7 @@ func (c *Checker) shouldCheck() (bool, error) {
 	}
 
 	var cache CacheData
-	if unmarshalErr := json.Unmarshal(data, &cache); unmarshalErr != nil {
+	if err := json.Unmarshal(data, &cache); err != nil {
 		// Corrupted cache - should check
 		return true, nil
 	}
@@ -137,7 +137,7 @@ func (c *Checker) fetchLatestVersion(ctx context.Context) (string, error) {
 	}
 
 	var release GitHubRelease
-	if err = json.Unmarshal(body, &release); err != nil {
+	if err := json.Unmarshal(body, &release); err != nil {
 		return "", err
 	}
 
@@ -205,7 +205,7 @@ func (c *Checker) showBannerFromCache() {
 		return
 	}
 	var cache CacheData
-	if unmarshalErr := json.Unmarshal(data, &cache); unmarshalErr != nil || cache.LatestVersion == "" {
+	if err := json.Unmarshal(data, &cache); err != nil || cache.LatestVersion == "" {
 		return
 	}
 	needsUpdate, err := c.compareVersions(c.currentVersion, cache.LatestVersion)
@@ -214,7 +214,6 @@ func (c *Checker) showBannerFromCache() {
 	}
 	c.displayNotification(cache.LatestVersion)
 }
-
 // updateCache updates the cache file with the latest check time and version
 func (c *Checker) updateCache(latestVersion string) error {
 	// Ensure cache directory exists

@@ -45,7 +45,7 @@ func (eg *EntryGenerator) GenerateRandomKey(index int64) string {
 	randBytes := make([]byte, 8)
 
 	// Use index + random data for uniqueness
-	randBytesN, _ := rand.Read(randBytes) //nolint:errcheck
+	randBytesN, _ := rand.Read(randBytes)
 	copy(keyBytes[:8], randBytes[:randBytesN])
 
 	// Add index for deterministic ordering when needed
@@ -55,7 +55,7 @@ func (eg *EntryGenerator) GenerateRandomKey(index int64) string {
 
 	// Fill rest with pseudo-random data
 	randRestBytes := make([]byte, 16)
-	_, _ = rand.Read(randRestBytes) //nolint:errcheck
+	rand.Read(randRestBytes)
 	copy(keyBytes[16:], randRestBytes)
 
 	return base64.StdEncoding.EncodeToString(keyBytes)
@@ -85,7 +85,7 @@ func (eg *EntryGenerator) GenerateRandomValue() string {
 // pseudoRand32 generates a pseudo-random 32-bit number for simplicity
 func (eg *EntryGenerator) pseudoRand32() uint32 {
 	b := make([]byte, 4)
-	_, _ = rand.Read(b) //nolint:errcheck
+	rand.Read(b)
 	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
 }
 
@@ -94,7 +94,7 @@ func (eg *EntryGenerator) GenerateEntries() []snapshot.LedgerEntryTuple {
 	entries := make([]snapshot.LedgerEntryTuple, 0, eg.config.Count)
 
 	if eg.config.Verbose {
-		_, _ = fmt.Printf("Generating %d randomized XDR entries...\n", eg.config.Count) //nolint:errcheck
+		fmt.Printf("Generating %d randomized XDR entries...\n", eg.config.Count)
 	}
 
 	startTime := time.Now()
@@ -114,15 +114,15 @@ func (eg *EntryGenerator) GenerateEntries() []snapshot.LedgerEntryTuple {
 			elapsed := time.Since(startTime)
 			rate := float64(processed) / elapsed.Seconds()
 			eta := time.Duration(float64(eg.config.Count-processed)/rate) * time.Second
-			_, _ = fmt.Printf("\rProgress: %d/%d (%.0f entries/sec, ETA: %v)", //nolint:errcheck
+			fmt.Printf("\rProgress: %d/%d (%.0f entries/sec, ETA: %v)",
 				processed, eg.config.Count, rate, eta)
 			lastProgressUpdate = time.Now()
 		}
 	}
 
 	if eg.config.Verbose {
-		_, _ = fmt.Printf("\nGeneration completed in %v\n", time.Since(startTime)) //nolint:errcheck
-		_, _ = fmt.Printf("Sorting entries...\n") //nolint:errcheck
+		fmt.Printf("\nGeneration completed in %v\n", time.Since(startTime))
+		fmt.Printf("Sorting entries...\n")
 	}
 
 	// Sort entries by key for deterministic snapshot format
@@ -158,22 +158,22 @@ func main() {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
-	_, _ = fmt.Printf("XDR Benchmark Snapshot Generator\n") //nolint:errcheck
-	_, _ = fmt.Printf("================================\n") //nolint:errcheck
-	_, _ = fmt.Printf("Entries to generate: %d\n", config.Count) //nolint:errcheck
-	_, _ = fmt.Printf("Output file: %s\n", config.OutputFile) //nolint:errcheck
-	_, _ = fmt.Printf("Seed: %d\n\n", config.SeedValue) //nolint:errcheck
+	fmt.Printf("XDR Benchmark Snapshot Generator\n")
+	fmt.Printf("================================\n")
+	fmt.Printf("Entries to generate: %d\n", config.Count)
+	fmt.Printf("Output file: %s\n", config.OutputFile)
+	fmt.Printf("Seed: %d\n\n", config.SeedValue)
 
 	generator := NewEntryGenerator(config)
 
 	if config.Verbose {
-		_, _ = fmt.Println("Generating randomized XDR snapshot...") //nolint:errcheck
+		fmt.Println("Generating randomized XDR snapshot...")
 	}
 
 	snap := generator.GenerateSnapshot()
 
 	if config.Verbose {
-		_, _ = fmt.Printf("Saving snapshot to %s\n", config.OutputFile) //nolint:errcheck
+		fmt.Printf("Saving snapshot to %s\n", config.OutputFile)
 	}
 
 	if err := snapshot.Save(config.OutputFile, snap); err != nil {
@@ -190,11 +190,11 @@ func main() {
 	fileSizeMB := float64(fileSizeBytes) / (1024 * 1024)
 	avgEntrySize := float64(fileSizeBytes) / float64(config.Count)
 
-	_, _ = fmt.Printf("\n=== Generation Statistics ===\n") //nolint:errcheck
-	_, _ = fmt.Printf("Total entries generated: %d\n", config.Count) //nolint:errcheck
-	_, _ = fmt.Printf("Total file size: %.2f MB (%.0f bytes)\n", fileSizeMB, float64(fileSizeBytes)) //nolint:errcheck
-	_, _ = fmt.Printf("Average XDR value size: %.0f bytes\n", avgEntrySize) //nolint:errcheck
-	_, _ = fmt.Printf("Estimated overhead (keys + JSON): %.2f %%\n", //nolint:errcheck
+	fmt.Printf("\n=== Generation Statistics ===\n")
+	fmt.Printf("Total entries generated: %d\n", config.Count)
+	fmt.Printf("Total file size: %.2f MB (%.0f bytes)\n", fileSizeMB, float64(fileSizeBytes))
+	fmt.Printf("Average XDR value size: %.0f bytes\n", avgEntrySize)
+	fmt.Printf("Estimated overhead (keys + JSON): %.2f %%\n",
 		(float64(fileSizeBytes)/float64(config.Count*1000))*100)
-	_, _ = fmt.Printf("\nSnapshot saved successfully!\n") //nolint:errcheck
+	fmt.Printf("\nSnapshot saved successfully!\n")
 }

@@ -7,20 +7,7 @@
 //! repetitive debugging sessions. Cached mappings are stored in
 //! ~/.erst/cache/sourcemaps indexed by WASM SHA256 hash.
 
-#![allow(
-    dead_code,
-    clippy::missing_errors_doc,
-    clippy::must_use_candidate,
-    clippy::doc_markdown,
-    clippy::uninlined_format_args,
-    clippy::module_name_repetitions,
-    clippy::needless_pass_by_value,
-    clippy::redundant_closure_for_method_calls,
-    clippy::unnecessary_semicolon,
-    clippy::missing_const_for_fn,
-    clippy::option_if_let_else,
-    clippy::redundant_clone
-)]
+#![allow(dead_code)]
 
 use crate::source_mapper::SourceLocation;
 use serde::{Deserialize, Serialize};
@@ -86,8 +73,15 @@ impl SourceMapCache {
         self.cache_dir.join(format!("{}.bin", wasm_hash))
     }
 
-    /// Gets a cached source map entry if it exists and is valid
-    pub fn get(&self, wasm_hash: &str) -> Option<SourceMapCacheEntry> {
+    /// Gets a cached source map entry if it exists and is valid.
+    /// When `no_cache` is true, skips the cache and returns None immediately,
+    /// forcing the caller to re-parse WASM symbols from scratch.
+    pub fn get(&self, wasm_hash: &str, no_cache: bool) -> Option<SourceMapCacheEntry> {
+        if no_cache {
+            println!("Cache bypassed via --no-cache flag. Re-parsing WASM symbols.");
+            return None;
+        }
+
         let cache_path = self.get_cache_path(wasm_hash);
 
         if !cache_path.exists() {
@@ -298,7 +292,7 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: 10,
+                column: Some(10),
                 column_end: None,
             },
         );
@@ -307,14 +301,14 @@ mod tests {
             wasm_hash: wasm_hash.clone(),
             has_symbols: true,
             mappings,
-            created_at: 1_234_567_890,
+            created_at: 1234567890,
         };
 
         // Store the entry
         cache.store(entry.clone()).unwrap();
 
-        // Retrieve the entry
-        let retrieved = cache.get(&wasm_hash).unwrap();
+        // Retrieve the entry — no_cache=false so cache is used normally
+        let retrieved = cache.get(&wasm_hash, false).unwrap();
         assert_eq!(retrieved.wasm_hash, wasm_hash);
         assert!(retrieved.has_symbols);
         assert_eq!(retrieved.mappings.len(), 1);
@@ -324,7 +318,30 @@ mod tests {
     fn test_get_missing() {
         let (cache, _temp) = create_test_cache();
 
-        let result = cache.get("nonexistent_hash_12345678901234567890123456789012");
+        let result = cache.get("nonexistent_hash_12345678901234567890123456789012", false);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_no_cache_bypasses_cache() {
+        let (cache, _temp) = create_test_cache();
+
+        let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d];
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
+
+        let entry = SourceMapCacheEntry {
+            wasm_hash: wasm_hash.clone(),
+            has_symbols: true,
+            mappings: HashMap::new(),
+            created_at: 1234567890,
+        };
+
+        // Store an entry so it exists on disk
+        cache.store(entry).unwrap();
+        assert!(cache.get(&wasm_hash, false).is_some());
+
+        // With no_cache=true, it should return None even though cache exists
+        let result = cache.get(&wasm_hash, true);
         assert!(result.is_none());
     }
 
@@ -339,15 +356,15 @@ mod tests {
             wasm_hash: wasm_hash.clone(),
             has_symbols: true,
             mappings: HashMap::new(),
-            created_at: 1_234_567_890,
+            created_at: 1234567890,
         };
 
         cache.store(entry).unwrap();
-        assert!(cache.get(&wasm_hash).is_some());
+        assert!(cache.get(&wasm_hash, false).is_some());
 
         let count = cache.clear().unwrap();
         assert_eq!(count, 1);
-        assert!(cache.get(&wasm_hash).is_none());
+        assert!(cache.get(&wasm_hash, false).is_none());
     }
 
     #[test]
@@ -366,7 +383,7 @@ mod tests {
             SourceLocation {
                 file: "test.rs".to_string(),
                 line: 42,
-                column: 10,
+                column: Some(10),
                 column_end: None,
             },
         );
@@ -375,7 +392,7 @@ mod tests {
             wasm_hash,
             has_symbols: true,
             mappings,
-            created_at: 1_234_567_890,
+            created_at: 1234567890,
         };
 
         cache.store(entry).unwrap();
@@ -398,7 +415,7 @@ mod tests {
             wasm_hash: wasm_hash.clone(),
             has_symbols: true,
             mappings: HashMap::new(),
-            created_at: 1_234_567_890,
+            created_at: 1234567890,
         };
 
         cache.store(entry).unwrap();

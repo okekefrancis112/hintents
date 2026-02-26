@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dotandev/hintents/internal/errors"
@@ -102,14 +101,14 @@ The session ID can be auto-generated or specified with --id flag.`,
 		defer store.Close()
 
 		// Run cleanup before save
-		if cleanupErr := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); cleanupErr != nil {
+		if err := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); err != nil {
 			// Log but don't fail on cleanup errors
-			fmt.Fprintf(os.Stderr, "Warning: cleanup failed: %v\n", cleanupErr)
+			fmt.Fprintf(os.Stderr, "Warning: cleanup failed: %v\n", err)
 		}
 
 		// Save session
-		if saveErr := store.Save(ctx, data); saveErr != nil {
-			return errors.WrapValidationError(fmt.Sprintf("failed to save session: %v", saveErr))
+		if err := store.Save(ctx, data); err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to save session: %v", err))
 		}
 
 		fmt.Printf("Session saved: %s\n", data.ID)
@@ -147,18 +146,14 @@ Use 'erst session list' to see available sessions.`,
 		defer store.Close()
 
 		// Run cleanup
-		if cleanupErr := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: session cleanup failed: %v\n", cleanupErr)
+		if err := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: session cleanup failed: %v\n", err)
 		}
 
-		// Load session
-		data, err := store.Load(ctx, sessionID)
+		// Resolve session by exact ID, partial ID prefix, tx hash, or fuzzy match
+		data, err := resolveSessionInput(ctx, store, sessionID)
 		if err != nil {
-			suggestion, suggestErr := suggestSessionID(ctx, store, sessionID)
-			if suggestErr != nil {
-				return errors.WrapValidationError(fmt.Sprintf("failed to list sessions: %v", suggestErr))
-			}
-			return resourceNotFoundError(suggestion)
+			return err
 		}
 
 		// Check schema version compatibility
@@ -185,8 +180,8 @@ Use 'erst session list' to see available sessions.`,
 
 		// Show simulation results if available
 		if data.SimResponseJSON != "" {
-			resp, simErr := data.ToSimulationResponse()
-			if simErr == nil {
+			resp, err := data.ToSimulationResponse()
+			if err == nil {
 				fmt.Printf("\nSimulation Results:\n")
 				fmt.Printf("  Status: %s\n", resp.Status)
 				if resp.Error != "" {
@@ -225,8 +220,8 @@ Displays session ID, network, last access time, and transaction hash.`,
 		defer store.Close()
 
 		// Run cleanup
-		if cleanupErr := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: session cleanup failed: %v\n", cleanupErr)
+		if err := store.Cleanup(ctx, session.DefaultTTL, session.DefaultMaxSessions); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: session cleanup failed: %v\n", err)
 		}
 
 		// List sessions
@@ -277,19 +272,17 @@ Use 'erst session list' to see available sessions.`,
 		}
 		defer store.Close()
 
-		// Delete session
-		if deleteErr := store.Delete(ctx, sessionID); deleteErr != nil {
-			if strings.Contains(strings.ToLower(deleteErr.Error()), "not found") {
-				suggestion, suggestErr := suggestSessionID(ctx, store, sessionID)
-				if suggestErr != nil {
-					return errors.WrapValidationError(fmt.Sprintf("failed to list sessions: %v", suggestErr))
-				}
-				return resourceNotFoundError(suggestion)
-			}
-			return errors.WrapValidationError(fmt.Sprintf("failed to delete session '%s': %v", sessionID, deleteErr))
+		// Resolve to a valid session ID before deleting
+		resolved, resolveErr := resolveSessionInput(ctx, store, sessionID)
+		if resolveErr != nil {
+			return resolveErr
 		}
 
-		fmt.Printf("Session deleted: %s\n", sessionID)
+		if err := store.Delete(ctx, resolved.ID); err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to delete session '%s': %v", resolved.ID, err))
+		}
+
+		fmt.Printf("Session deleted: %s\n", resolved.ID)
 		return nil
 	},
 }
