@@ -162,23 +162,26 @@ impl TypeSection {
             let payload = payload.map_err(|e| format!("Failed to parse WASM: {}", e))?;
 
             if let Payload::TypeSection(type_reader) = payload {
-                for ty in type_reader {
-                    let ty = ty.map_err(|e| format!("Failed to read type: {}", e))?;
+                for rec_group in type_reader {
+                    let rec_group = rec_group.map_err(|e| format!("Failed to read type: {}", e))?;
 
-                    if let wasmparser::Type::Func(func_type) = ty {
-                        let params = func_type
-                            .params()
-                            .iter()
-                            .map(|vt| ValueType::from_valtype(*vt))
-                            .collect();
+                    // RecGroup contains SubType entries
+                    for sub_type in rec_group.types() {
+                        if let wasmparser::CompositeType::Func(func_type) = &sub_type.composite_type {
+                            let params = func_type
+                                .params()
+                                .iter()
+                                .map(|vt| ValueType::from_valtype(*vt))
+                                .collect();
 
-                        let results = func_type
-                            .results()
-                            .iter()
-                            .map(|vt| ValueType::from_valtype(*vt))
-                            .collect();
+                            let results = func_type
+                                .results()
+                                .iter()
+                                .map(|vt| ValueType::from_valtype(*vt))
+                                .collect();
 
-                        types.push(FunctionSignature::new(params, results));
+                            types.push(FunctionSignature::new(params, results));
+                        }
                     }
                 }
             }
@@ -198,6 +201,7 @@ impl TypeSection {
     }
 
     /// Check if the type section is empty
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.types.is_empty()
     }

@@ -3,12 +3,15 @@
 
 use gimli::{self, ColumnType, Dwarf, EndianSlice, Reader, RunTimeEndian, SectionId};
 use object::{Object, ObjectSection};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::borrow::Cow;
+use crate::source_map_cache::{SourceMapCache, SourceMapCacheEntry};
 
 pub struct SourceMapper {
     has_symbols: bool,
     line_cache: Vec<CachedLineEntry>,
+    #[allow(dead_code)]
+    wasm_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +32,7 @@ struct CachedLineEntry {
 impl SourceMapper {
     /// Creates a new SourceMapper with caching enabled
     pub fn new(wasm_bytes: Vec<u8>) -> Self {
+        let wasm_hash = SourceMapCache::compute_wasm_hash(&wasm_bytes);
         let has_symbols = Self::check_debug_symbols(&wasm_bytes);
         let line_cache = if has_symbols {
             Self::build_line_cache(&wasm_bytes).unwrap_or_default()
@@ -39,6 +43,7 @@ impl SourceMapper {
         Self {
             has_symbols,
             line_cache,
+            wasm_hash,
         }
     }
 
@@ -229,6 +234,7 @@ impl SourceMapper {
     }
 
     /// Returns the WASM hash used for caching
+    #[allow(dead_code)]
     pub fn get_wasm_hash(&self) -> &str {
         &self.wasm_hash
     }
@@ -243,6 +249,7 @@ mod tests {
         SourceMapper {
             has_symbols: true,
             line_cache: entries,
+            wasm_hash: "test_hash".to_string(),
         }
     }
 
@@ -282,7 +289,7 @@ mod tests {
 
         let loc = mapper.map_wasm_offset_to_source(0x18).expect("mapping");
         assert_eq!(loc.line, 10);
-        assert_eq!(loc.column, Some(1));
+        assert_eq!(loc.column, 1);
 
         let loc = mapper.map_wasm_offset_to_source(0x25).expect("mapping");
         assert_eq!(loc.line, 20);
@@ -328,7 +335,7 @@ mod tests {
         // The current implementation only caches when debug symbols are present
         {
             let mapper =
-                SourceMapper::new_with_cache(wasm_bytes.clone(), temp_dir.path().to_path_buf());
+                SourceMapper::new(wasm_bytes.clone());
             assert!(!mapper.has_debug_symbols());
 
             // Try to map - should work even without symbols

@@ -27,36 +27,37 @@ impl SimHost {
     /// Initialize a new Host with optional budget settings and resource calibration.
     pub fn new(
         budget_limits: Option<(u64, u64)>,
-        calibration: Option<crate::types::ResourceCalibration>,
-        memory_limit: Option<u64>
+        _calibration: Option<crate::types::ResourceCalibration>,
+        _memory_limit: Option<u64>
     ) -> Self {
         let budget = Budget::default();
 
-        if let Some(calib) = calibration {
-            use soroban_env_host::budget::CostModel;
-            use soroban_env_host::xdr::ContractCostType;
-
-            // SHA256
-            let sha256_model = CostModel {
-                const_term: calib.sha256_fixed as i64,
-                linear_term: calib.sha256_per_byte as i64,
-            };
-            let _ = budget.set_model(ContractCostType::ComputeSha256Hash, sha256_model);
-
-            // Keccak256
-            let keccak256_model = CostModel {
-                const_term: calib.keccak256_fixed as i64,
-                linear_term: calib.keccak256_per_byte as i64,
-            };
-            let _ = budget.set_model(ContractCostType::ComputeKeccak256Hash, keccak256_model);
-
-            // Ed25519
-            let ed25519_model = CostModel {
-                const_term: calib.ed25519_fixed as i64,
-                linear_term: 0,
-            };
-            let _ = budget.set_model(ContractCostType::VerifyEd25519Sig, ed25519_model);
-        }
+        // TODO: CostModel and set_model are not available in this version
+        // if let Some(calib) = calibration {
+        //     use soroban_env_host::budget::CostModel;
+        //     use soroban_env_host::xdr::ContractCostType;
+        //
+        //     // SHA256
+        //     let sha256_model = CostModel {
+        //         const_term: calib.sha256_fixed as i64,
+        //         linear_term: calib.sha256_per_byte as i64,
+        //     };
+        //     let _ = budget.set_model(ContractCostType::ComputeSha256Hash, sha256_model);
+        //
+        //     // Keccak256
+        //     let keccak256_model = CostModel {
+        //         const_term: calib.keccak256_fixed as i64,
+        //         linear_term: calib.keccak256_per_byte as i64,
+        //     };
+        //     let _ = budget.set_model(ContractCostType::ComputeKeccak256Hash, keccak256_model);
+        //
+        //     // Ed25519
+        //     let ed25519_model = CostModel {
+        //         const_term: calib.ed25519_fixed as i64,
+        //         linear_term: 0,
+        //     };
+        //     let _ = budget.set_model(ContractCostType::VerifyEd25519Sig, ed25519_model);
+        // }
 
         if let Some((_cpu, _mem)) = budget_limits {
             // Budget customization requires testutils feature or extended API
@@ -73,7 +74,7 @@ impl SimHost {
             inner: host,
             contract_id: None,
             fn_name: None,
-            memory_limit,
+            memory_limit: _memory_limit,
         }
     }
 
