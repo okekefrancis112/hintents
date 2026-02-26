@@ -23,9 +23,8 @@ pub struct SimulationRequest {
     pub timestamp: String,
     pub mock_base_fee: Option<u32>,
     pub mock_gas_price: Option<u64>,
-    /// Optional hard memory limit in bytes. If set, the simulator will panic
-    /// when memory consumption exceeds this limit, simulating live network constraints.
-    pub memory_limit: Option<u64>,
+    #[serde(default)]
+    pub restore_preamble: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
