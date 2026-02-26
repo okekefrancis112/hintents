@@ -8,7 +8,6 @@ mod gas_optimizer;
 mod git_detector;
 mod runner;
 mod snapshot;
-mod snapshot;
 mod source_map_cache;
 mod source_mapper;
 mod stack_trace;
@@ -309,7 +308,6 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
                     // failed_call=true means the call that emitted this event
                     // actually failed; so a successful call is the inverse.
                     in_successful_contract_call: !e.failed_call,
-                    wasm_instruction,
                 },
             }
         })
@@ -317,6 +315,12 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
 }
 
 fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
+    if !topics
+        .iter()
+        .any(|t| t == "\"tick\"" || t == "tick" || t == "\"budget\"" || t == "budget")
+    {
+        return None;
+    }
     if data.contains("Instruction:") {
         let parts: Vec<&str> = data.split("Instruction:").collect();
         if parts.len() > 1 {
@@ -465,8 +469,12 @@ fn main() {
                 if let Err(e) = vm::enforce_soroban_compatibility(&wasm_bytes) {
                     return send_error(format!("Strict VM enforcement failed: {}", e));
                 }
-                let mapper =
-                    SourceMapper::new_with_options(wasm_bytes, request.no_cache.unwrap_or(false));
+                let mapper = if request.enable_coverage {
+                    SourceMapper::new_with_options(wasm_bytes, false)
+                } else {
+                    SourceMapper::new_with_options(wasm_bytes, false)
+                };
+
                 if mapper.has_debug_symbols() {
                     eprintln!("Debug symbols found in WASM");
                     Some(mapper)
@@ -688,10 +696,8 @@ fn main() {
                                     contract_id,
                                     topics,
                                     data,
-                                    in_successful_contract_call: !event.failed_call,
                                     wasm_instruction,
                                     in_successful_contract_call: !event.failed_call,
-                                    wasm_instruction,
                                 }
                             })
                             .collect();
@@ -784,7 +790,6 @@ fn main() {
                     .as_ref()
                     .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
                     .and_then(|loc| serde_json::to_string(&loc).ok()),
-                wasm_offset: None,
                 linear_memory_dump: None,
             };
 
@@ -802,7 +807,7 @@ fn main() {
             let wasm_trace = WasmStackTrace::from_host_error(&error_debug);
             let trace_display = wasm_trace.display();
 
-            let structured_error = StructuredError {
+            let _structured_error = StructuredError {
                 error_type: "HostError".to_string(),
                 message: decoded_msg.clone(),
                 details: Some(format!(
@@ -1007,26 +1012,6 @@ fn main() {
     }
 }
 
-fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
-    let has_budget_topic = topics.iter().any(|topic| {
-        let lower = topic.to_lowercase();
-        lower.contains("budget") || lower.contains("instruction")
-    });
-    if !has_budget_topic {
-        return None;
-    }
-
-    let marker = "Instruction:";
-    let idx = data.find(marker)?;
-    let mut instr = data[idx + marker.len()..].trim().to_string();
-    instr = instr.trim_matches('"').trim_matches('\'').to_string();
-    if instr.is_empty() {
-        None
-    } else {
-        Some(instr)
-    }
-}
-
 fn extract_wasm_offset(error_msg: &str) -> Option<u64> {
     // Look for patterns like "@ 0x[HEX]" in the error message
     // Soroban/Wasmi errors often contain stack traces like:
@@ -1164,15 +1149,17 @@ pub fn decode_error(raw: &str) -> String {
     }
 
     // Look for "Instruction: <opcode>" pattern in the data
-    if let Some(start) = data.find("Instruction: ") {
-        let instr_start = start + "Instruction: ".len();
-        let rest = &data[instr_start..];
-        // Find the end of the instruction (quote or end of string)
-        let end = rest.find('"').unwrap_or(rest.len());
-        return Some(rest[..end].to_string());
+    if raw.to_lowercase().contains("instruction:") {
+        if let Some(start) = raw.to_lowercase().find("instruction: ") {
+            let instr_start = start + "instruction: ".len();
+            let rest = &raw[instr_start..];
+            // Find the end of the instruction (quote or end of string)
+            let end = rest.find('"').unwrap_or(rest.len());
+            return rest[..end].to_string();
+        }
     }
 
-    if lower.contains("missing") || lower.contains("not found") {
+    if lower.contains("missing") || lower.contains("not found") || lower.contains("get failed") {
         let key_hint = extract_missing_key_id(raw);
         if let Some(key) = key_hint {
             return format!(
@@ -1188,9 +1175,11 @@ pub fn decode_error(raw: &str) -> String {
 }
 
 #[cfg(test)]
+mod signature_verification_mock_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stack_trace::decode_error;
 
     #[test]
     fn test_decode_vm_traps() {

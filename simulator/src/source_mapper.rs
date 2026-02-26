@@ -20,7 +20,6 @@ pub struct SourceLocation {
     pub line: u32,
     pub column: Option<u32>,
     pub column_end: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub github_link: Option<String>,
 }
 
@@ -261,6 +260,7 @@ impl SourceMapper {
         Some(location)
     }
 
+    #[allow(dead_code)]
     pub fn create_source_location(
         &self,
         file: String,
@@ -348,7 +348,7 @@ mod tests {
 
         let loc = mapper.map_wasm_offset_to_source(0x18).expect("mapping");
         assert_eq!(loc.line, 10);
-        assert_eq!(loc.column, 1);
+        assert_eq!(loc.column, Some(1));
 
         let loc = mapper.map_wasm_offset_to_source(0x25).expect("mapping");
         assert_eq!(loc.line, 20);

@@ -294,6 +294,7 @@ mod tests {
                 line: 42,
                 column: Some(10),
                 column_end: None,
+                github_link: None,
             },
         );
 
@@ -385,6 +386,7 @@ mod tests {
                 line: 42,
                 column: Some(10),
                 column_end: None,
+                github_link: None,
             },
         );
 
