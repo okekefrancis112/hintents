@@ -27,8 +27,9 @@ var (
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell",
-	Short: "Start an interactive shell for contract invocations",
+	Use:     "shell",
+	GroupID: "development",
+	Short:   "Start an interactive shell for contract invocations",
 	Long: `Start a persistent interactive shell where you can invoke multiple contracts
 consecutively without losing the local ledger state between commands.
 
