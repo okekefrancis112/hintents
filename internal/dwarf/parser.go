@@ -28,14 +28,14 @@ var (
 
 // LocalVar represents a local variable at a specific program location
 type LocalVar struct {
-	Name         string      // Variable name (may be mangled)
-	DemangledName string    // Demangled name for display
-	Type         string      // Type name
-	Location     string      // DWARF location description
-	Value        interface{} // Computed value (if available)
-	Address      uint64      // Memory address (if applicable)
-	StartLine    int         // Source line where variable is in scope
-	EndLine      int         // Source line where variable goes out of scope
+	Name          string      // Variable name (may be mangled)
+	DemangledName string      // Demangled name for display
+	Type          string      // Type name
+	Location      string      // DWARF location description
+	Value         interface{} // Computed value (if available)
+	Address       uint64      // Memory address (if applicable)
+	StartLine     int         // Source line where variable is in scope
+	EndLine       int         // Source line where variable goes out of scope
 }
 
 // SubprogramInfo represents a function/subprogram's debug information
@@ -109,44 +109,25 @@ func NewParser(data []byte) (*Parser, error) {
 
 // parseWASM parses DWARF info from a WASM binary
 func parseWASM(data []byte) (*Parser, error) {
-	// For WASM, we need to look for custom sections starting with ".debug_"
-	// WASM doesn't have native DWARF support, but compilers often embed
-	// DWARF info as custom sections
-	
-	// Try to find debug sections in WASM
 	sections := parseWASMSections(data)
-	
-	var dwarfData *dwarf.Data
-	var err error
-	
-	// Look for .debug_info section
-	if infoSection, ok := sections[".debug_info"]; ok {
-		abbrevSection := sections[".debug_abbrev"]
-		lineSection := sections[".debug_line"]
-		strSection := sections[".debug_str"]
-		dwarfData, err = dwarf.New(abbrevSection, nil, nil, infoSection, lineSection, nil, nil, strSection)
-		if err != nil {
-			// Fall back without optional sections
-			dwarfData, err = dwarf.New(abbrevSection, nil, nil, infoSection, nil, nil, nil, nil)
-		}
 
 	infoSec, ok := sections[".debug_info"]
 	if !ok || len(infoSec) == 0 {
 		return nil, ErrNoDebugInfo
 	}
-	abbrevSec, _ := sections[".debug_abbrev"]
-	lineSec, _ := sections[".debug_line"]
-	rangesSec, _ := sections[".debug_ranges"]
-	strSec, _ := sections[".debug_str"]
+	abbrevSec := sections[".debug_abbrev"]
+	lineSec := sections[".debug_line"]
+	rangesSec := sections[".debug_ranges"]
+	strSec := sections[".debug_str"]
 
 	dwarfData, err := dwarf.New(abbrevSec, nil, nil, infoSec, lineSec, nil, rangesSec, strSec)
 	if dwarfData == nil || err != nil {
-		// No DWARF info in WASM
 		return nil, ErrNoDebugInfo
 	}
 
 	return &Parser{
 		data:       dwarfData,
+		reader:     dwarfData.Reader(),
 		binaryType: "wasm",
 	}, nil
 }
@@ -499,7 +480,6 @@ func (p *Parser) FindLocalVarsAt(addr uint64) ([]LocalVar, error) {
 	// Filter variables that are in scope at this address
 	var inScope []LocalVar
 	for _, v := range subprogram.LocalVariables {
-		if addr >= uint64(v.StartLine) { // Simplified check
 		if addr >= uint64(v.StartLine) {
 			inScope = append(inScope, v)
 		}
@@ -586,6 +566,7 @@ func (p *Parser) findLineForAddr(lr *dwarf.LineReader, addr uint64) *SourceLocat
 //	0x03  DW_OP_addr          – followed by a target-address-sized literal
 //	0x9f  DW_OP_stack_value   – the value is the top of the expression stack
 //	0x00  (no-op / terminator in some older encodings)
+//
 // DWARF location expression opcodes (DW_OP_*) used in formatLocation.
 // These are defined in the DWARF spec and are not exported by debug/dwarf.
 const (

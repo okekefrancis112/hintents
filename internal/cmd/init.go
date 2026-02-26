@@ -95,7 +95,7 @@ func runInitWizard(cmd *cobra.Command, opts *initScaffoldOptions) error {
 	reader := bufio.NewReader(cmd.InOrStdin())
 	out := cmd.OutOrStdout()
 
-	_, _ = fmt.Fprintln(out, "Erst init setup wizard")       //nolint:errcheck
+	_, _ = fmt.Fprintln(out, "Erst init setup wizard")          //nolint:errcheck
 	_, _ = fmt.Fprintln(out, "Press Enter to accept defaults.") //nolint:errcheck
 
 	rpcURL, err := promptWithDefault(reader, out, "Preferred Soroban RPC URL", defaultRPCURLForNetwork(opts.Network, opts.RPCURL))

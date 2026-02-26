@@ -155,7 +155,6 @@ func runDryRun(cmd *cobra.Command, args []string) error {
 	}
 
 	gas, err := simulator.EstimateGas(runner, simReq)
-	resp, err := runner.Run(ctx, simReq)
 	if err != nil {
 		return errors.WrapSimulationFailed(fmt.Errorf("gas estimation: %w", err), "")
 	}

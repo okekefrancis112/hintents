@@ -56,38 +56,14 @@ var (
 	demoMode            bool
 	watchFlag           bool
 	watchTimeoutFlag    int
-	protocolVersionFlag  uint32
-	themeFlag            string
-	auditKeyFlag         string
-	publishIPFSFlag      bool
-	publishArweaveFlag   bool
-	ipfsNodeFlag         string
-	arweaveGatewayFlag   string
-	arweaveWalletFlag    string
 	protocolVersionFlag uint32
-	themeFlag           string
+	auditKeyFlag        string
+	publishIPFSFlag     bool
+	publishArweaveFlag  bool
+	ipfsNodeFlag        string
+	arweaveGatewayFlag  string
+	arweaveWalletFlag   string
 	mockTimeFlag        int64
-	networkFlag        string
-	rpcURLFlag         string
-	rpcTokenFlag       string
-	tracingEnabled     bool
-	otlpExporterURL    string
-	generateTrace      bool
-	traceOutputFile    string
-	snapshotFlag       string
-	compareNetworkFlag string
-	verbose            bool
-	wasmPath           string
-	args               []string
-	noCacheFlag        bool
-	demoMode           bool
-	watchFlag          bool
-	watchTimeoutFlag   int
-	mockBaseFeeFlag    uint32
-	mockGasPriceFlag   uint64
-	themeFlag           string
-	mockTimeFlag        int64
-	protocolVersionFlag uint32
 	mockBaseFeeFlag     uint32
 	mockGasPriceFlag    uint64
 )
@@ -729,6 +705,7 @@ Local WASM Replay Mode:
 				lastSimResp.Events,
 				lastSimResp.Logs,
 				auditKeyFlag,
+				nil,
 			)
 			if auditErr != nil {
 				return fmt.Errorf("failed to generate audit log: %w", auditErr)
@@ -1208,7 +1185,6 @@ func init() {
 	debugCmd.Flags().BoolVar(&watchFlag, "watch", false, "Poll for transaction on-chain before debugging")
 	debugCmd.Flags().IntVar(&watchTimeoutFlag, "watch-timeout", 30, "Timeout in seconds for watch mode")
 	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version for simulation (20, 21, 22, etc)")
-	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Color theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
 	debugCmd.Flags().StringVar(&auditKeyFlag, "audit-key", "", "Ed25519 private key (hex) used to sign the audit trail")
 	debugCmd.Flags().BoolVar(&publishIPFSFlag, "publish-ipfs", false, "Pin signed audit trail to IPFS after simulation (requires --audit-key)")
 	debugCmd.Flags().BoolVar(&publishArweaveFlag, "publish-arweave", false, "Upload signed audit trail to Arweave after simulation (requires --audit-key)")
@@ -1216,9 +1192,6 @@ func init() {
 	debugCmd.Flags().StringVar(&arweaveGatewayFlag, "arweave-gateway", "", "Arweave HTTP gateway URL (default: https://arweave.net or ERST_ARWEAVE_GATEWAY env)")
 	debugCmd.Flags().StringVar(&arweaveWalletFlag, "arweave-wallet", "", "Path to Arweave JWK wallet file for signing data transactions (or ERST_ARWEAVE_WALLET env)")
 	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Fix the ledger timestamp for deterministic local simulation (Unix epoch seconds); 0 = disabled")
-	debugCmd.Flags().StringVar(&themeFlag, "theme", "", "Output theme (default, deuteranopia, protanopia, tritanopia, high-contrast)")
-	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Override ledger timestamp (Unix epoch) for simulation")
-	debugCmd.Flags().Uint32Var(&protocolVersionFlag, "protocol-version", 0, "Override protocol version for simulation")
 	debugCmd.Flags().Uint32Var(&mockBaseFeeFlag, "mock-base-fee", 0, "Override base fee (stroops) for local fee sufficiency checks")
 	debugCmd.Flags().Uint64Var(&mockGasPriceFlag, "mock-gas-price", 0, "Override gas price multiplier for local fee sufficiency checks")
 

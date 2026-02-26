@@ -1191,7 +1191,6 @@ func (c *Client) getHealthAttempt(ctx context.Context) (healthResp *GetHealthRes
 
 	// Prefer SorobanURL but fall back to the currently active HorizonURL so that
 	// rotateURL-triggered failovers are reflected in health checks.
-	targetURL := c.SorobanURL
 	if targetURL == "" {
 		targetURL = c.HorizonURL
 	}
@@ -1343,4 +1342,3 @@ func (c *Client) CheckStaleness(ctx context.Context, network string) error {
 
 	return nil
 }
-

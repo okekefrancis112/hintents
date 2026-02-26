@@ -215,15 +215,15 @@ func (tv *TreeViewerWithMouse) renderView() {
 	_, _ = fmt.Print("\x1b[2J\x1b[H") //nolint:errcheck
 
 	// Render header
-	_, _ = fmt.Printf("ERST Interactive Trace Tree Viewer (Mouse Support Enabled)\n") //nolint:errcheck
+	_, _ = fmt.Printf("ERST Interactive Trace Tree Viewer (Mouse Support Enabled)\n")                  //nolint:errcheck
 	_, _ = fmt.Printf("Transaction: %s | Steps: %d\n", tv.trace.TransactionHash, len(tv.trace.States)) //nolint:errcheck
-	_, _ = fmt.Print("─────────────────────────────────────────────────────────\n") //nolint:errcheck
+	_, _ = fmt.Print("─────────────────────────────────────────────────────────\n")                    //nolint:errcheck
 
 	// Render tree
 	_, _ = fmt.Print(tv.renderer.Render()) //nolint:errcheck
 
 	// Render footer
-	_, _ = fmt.Print("\n─────────────────────────────────────────────────────────\n") //nolint:errcheck
+	_, _ = fmt.Print("\n─────────────────────────────────────────────────────────\n")                                                             //nolint:errcheck
 	_, _ = fmt.Print("Controls: ↑↓/kj=navigate | Space/Enter=expand | e=expand-all | c=collapse-all | h=help | q=quit | Click [+/-] to expand\n") //nolint:errcheck
 }
 
