@@ -1,3 +1,6 @@
+// Copyright 2025 Erst Users
+// SPDX-License-Identifier: Apache-2.0
+
 func TestSimulationRequestBuilder_WithRestorePreamble(t *testing.T) {
  builder := NewSimulationRequestBuilder()
 
