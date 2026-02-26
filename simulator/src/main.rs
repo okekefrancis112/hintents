@@ -5,20 +5,17 @@
 
 mod config;
 mod gas_optimizer;
-mod git_detector;
 mod runner;
-mod source_map_cache;
-mod source_mapper;
 mod stack_trace;
 mod types;
 mod vm;
 mod wasm;
 
 use crate::gas_optimizer::{BudgetMetrics, GasOptimizationAdvisor, CPU_LIMIT, MEMORY_LIMIT};
-use crate::source_mapper::SourceMapper;
 use crate::stack_trace::WasmStackTrace;
 use crate::types::*;
 use base64::Engine as _;
+use simulator::source_mapper::SourceMapper;
 use soroban_env_host::xdr::ReadXdr;
 use soroban_env_host::{
     xdr::{Operation, OperationBody},
@@ -165,17 +162,20 @@ fn execute_operations(
         match &op.body {
             OperationBody::InvokeHostFunction(invoke_op) => {
                 logs.push("Executing InvokeHostFunction...".to_string());
-                
+
                 // Check for signature verification mock
-                if let Some(mock_result) = check_signature_verification_mocks(&request, &invoke_op.host_function) {
+                if let Some(mock_result) =
+                    check_signature_verification_mocks(&request, &invoke_op.host_function)
+                {
                     logs.push(format!("Mock signature verification: {:?}", mock_result));
                     if !mock_result {
-                        return Err(soroban_env_host::HostError::from(
-                            (soroban_env_host::xdr::ScErrorType::Context, soroban_env_host::xdr::ScErrorCode::InvalidInput)
-                        ));
+                        return Err(soroban_env_host::HostError::from((
+                            soroban_env_host::xdr::ScErrorType::Context,
+                            soroban_env_host::xdr::ScErrorCode::InvalidInput,
+                        )));
                     }
                 }
-                
+
                 let val = host.invoke_function(invoke_op.host_function.clone())?;
                 logs.push(format!("Result: {val:?}"));
                 check_memory_limit_or_panic(host, memory_limit);
@@ -237,7 +237,7 @@ fn check_signature_verification_mocks(
 ) -> Option<bool> {
     // Check if signature verification mocking is enabled
     let mock_result = request.mock_signature_verification?;
-    
+
     // Check if this is a signature verification host function
     // Note: Current soroban-env-host version only has InvokeContract, CreateContract, and UploadContractWasm
     // Signature verification functions may be handled at a different level or in newer versions
@@ -246,7 +246,10 @@ fn check_signature_verification_mocks(
         _ => {
             // Check if the function name contains signature verification related terms
             let function_name = host_function.name();
-            if function_name.contains("Verify") || function_name.contains("Signature") || function_name.contains("Ed25519") {
+            if function_name.contains("Verify")
+                || function_name.contains("Signature")
+                || function_name.contains("Ed25519")
+            {
                 Some(mock_result)
             } else {
                 None
@@ -441,7 +444,7 @@ fn main() {
                 if let Err(e) = vm::enforce_soroban_compatibility(&wasm_bytes) {
                     return send_error(format!("Strict VM enforcement failed: {}", e));
                 }
-                let mapper = SourceMapper::new_with_options(wasm_bytes, request.no_cache.unwrap_or(false));
+                let mapper = SourceMapper::new_with_options(wasm_bytes, false);
                 if mapper.has_debug_symbols() {
                     eprintln!("Debug symbols found in WASM");
                     Some(mapper)
@@ -540,7 +543,13 @@ fn main() {
     // Wrap the operation execution in panic protection
     let mut coverage = CoverageTracker::default();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        execute_operations(&host, operations, &request, request.memory_limit, &mut coverage)
+        execute_operations(
+            &host,
+            operations,
+            &request,
+            request.memory_limit,
+            &mut coverage,
+        )
     }));
 
     // Budget and Reporting
@@ -748,7 +757,6 @@ fn main() {
                     .as_ref()
                     .and_then(|m| m.map_wasm_offset_to_source(0))
                     .and_then(|loc| serde_json::to_string(&loc).ok()),
-                wasm_offset: None,
             };
 
             if let Ok(json) = serde_json::to_string(&response) {
@@ -895,7 +903,6 @@ fn extract_wasm_offset(error_msg: &str) -> Option<u64> {
                 return Some(offset);
             }
         }
-        
     }
     None
 }
@@ -1021,7 +1028,7 @@ pub fn decode_error(raw: &str) -> String {
         return "Resource limit exceeded — the transaction consumed more CPU instructions or memory than the protocol-21 budget allows.".to_string();
     }
 
-  if lower.contains("missing") || lower.contains("not found") {
+    if lower.contains("missing") || lower.contains("not found") {
         let key_hint = extract_missing_key_id(raw);
         if let Some(key) = key_hint {
             return format!(
@@ -1182,7 +1189,7 @@ mod tests {
     /// and the `source_location` field stays absent in serialized JSON.
     #[test]
     fn test_source_mapper_no_symbols_gives_no_location() {
-        use crate::source_mapper::SourceMapper;
+        use simulator::source_mapper::SourceMapper;
 
         let wasm_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]; // WASM magic + version
         let mapper = SourceMapper::new_with_options(wasm_bytes, false);
@@ -1197,8 +1204,16 @@ mod tests {
     fn test_missing_ledger_entry_includes_key_id() {
         let raw = "HostError: storage get failed LedgerKey(ContractData(hash=abc123, key=Symbol(\"balance\")))";
         let msg = decode_error(raw);
-        assert!(msg.contains("Key ID:"), "expected Key ID in message, got: {}", msg);
-        assert!(msg.contains("LedgerKey(ContractData"), "expected key content in message, got: {}", msg);
+        assert!(
+            msg.contains("Key ID:"),
+            "expected Key ID in message, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("LedgerKey(ContractData"),
+            "expected key content in message, got: {}",
+            msg
+        );
         assert!(msg.contains("Missing ledger entry"));
     }
 
@@ -1219,18 +1234,27 @@ mod tests {
     #[test]
     fn test_extract_missing_key_id_ledger_key() {
         let raw = "HostError LedgerKey(ContractData(abc))";
-        assert_eq!(extract_missing_key_id(raw), Some("LedgerKey(ContractData(abc))".to_string()));
+        assert_eq!(
+            extract_missing_key_id(raw),
+            Some("LedgerKey(ContractData(abc))".to_string())
+        );
     }
 
     #[test]
     fn test_extract_missing_key_id_explicit_key_label() {
         let raw = "error: not found, key = \"GABC123/balance\"";
-        assert_eq!(extract_missing_key_id(raw), Some("GABC123/balance".to_string()));
+        assert_eq!(
+            extract_missing_key_id(raw),
+            Some("GABC123/balance".to_string())
+        );
     }
 
     #[test]
     fn test_extract_missing_key_id_none_when_absent() {
         assert_eq!(extract_missing_key_id("generic error with no key"), None);
+    }
+
+    #[test]
     fn test_generate_lcov_report_contains_function_hits() {
         let mut coverage = CoverageTracker::default();
         coverage
@@ -1248,4 +1272,3 @@ mod tests {
         assert!(report.contains("FNH:2"));
     }
 }
->>>>>>> ac2f0a127a0ae2292443728a70f9e09fa77f8835
