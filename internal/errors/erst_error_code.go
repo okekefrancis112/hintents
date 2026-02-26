@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 package errors
+
 import stdErrors "errors"
 
 // ErstErrorCode is a unified error code type for RPC and Simulator boundaries.
