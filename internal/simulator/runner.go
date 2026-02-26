@@ -191,14 +191,13 @@ func getSimulatorCoverageLCOVPath(req *SimulationRequest) *string {
 
 // -------------------- Execution --------------------
 
-func (r *Runner) Run(req *SimulationRequest) (*SimulationResponse, error) {
-	startTime := time.Now()
+func (r *Runner) Run(ctx context.Context, req *SimulationRequest) (*SimulationResponse, error) {
 	success := false
 	defer func() {
 		// Record simulation execution metrics
 		metrics.RecordSimulationExecution(success)
 	}()
-func (r *Runner) Run(ctx context.Context, req *SimulationRequest) (*SimulationResponse, error) {
+
 	if req == nil {
 		return nil, errors.NewSimErrorMsg(errors.CodeValidationFailed, "simulation request cannot be nil")
 	}
