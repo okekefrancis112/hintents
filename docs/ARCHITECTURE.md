@@ -221,6 +221,80 @@ graph TD
     Client -->|JSON-RPC| RPCAPI["Stellar RPC API<br/>(Future Enhancement)"]
 ```
 
+### 1.1 TypeScript RPC Client (Protocol V2)
+
+**Location:** `src/rpc/`
+
+**Overview:**
+The TypeScript RPC client provides Protocol V2 enhancements for the Stellar SDK, including type-safe methods, batch request support, and request/response validation.
+
+**Key Features:**
+
+- **Fallback Support**: Automatic failover across multiple RPC endpoints
+- **Circuit Breaker**: Prevents cascading failures with configurable threshold and timeout
+- **Batch Requests**: Execute multiple RPC calls in a single request (Protocol V2)
+- **Type-Safe Methods**: Full TypeScript support for all RPC methods
+- **Request/Response Validation**: Built-in validation for RPC requests and responses
+- **Performance Metrics**: Real-time endpoint health monitoring
+
+**Core Components:**
+
+```
+src/rpc/
+├── fallback-client.ts    # Main RPC client with fallback & circuit breaker
+├── types-v2.ts          # Protocol V2 type definitions
+├── validator.ts         # Request/response validation
+└── __tests__/
+    ├── fallback-client.spec.ts        # Core tests
+    └── fallback-client.benchmark.spec.ts  # Performance benchmarks
+```
+
+**Type-Safe Methods (Protocol V2):**
+
+```typescript
+const client = new FallbackRPCClient(config);
+
+// Individual type-safe calls
+const health = await client.getHealth();
+const tx = await client.getTransaction(hash);
+const result = await client.simulateTransaction(xdr);
+
+// Batch requests (Protocol V2)
+const results = await client.batchRequest([
+    { id: 1, method: 'getHealth', params: {} },
+    { id: 2, method: 'getLatestLedger', params: {} },
+]);
+
+// Parallel requests with concurrency control
+await client.parallelRequests(requests, 5);
+```
+
+**Validation:**
+
+```typescript
+import { RPCRequestValidator, RPCResponseValidator } from './validator';
+
+const errors = RPCRequestValidator.validate(request);
+if (errors.length > 0) {
+    // Handle validation errors
+}
+```
+
+**Configuration:**
+
+```typescript
+interface RPCClientConfig {
+    urls: string[];
+    timeout?: number;
+    retries?: number;
+    circuitBreakerThreshold?: number;
+    circuitBreakerTimeout?: number;
+    validateRequests?: boolean;
+    validateResponses?: boolean;
+    enableMetrics?: boolean;
+}
+```
+
 ### 2. Simulator Runner
 
 **Location:** `internal/simulator/runner.go`
