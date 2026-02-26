@@ -79,12 +79,13 @@ func runShell(cmd *cobra.Command, args []string) error {
 		opts = append(opts, rpc.WithToken(shellRPCToken))
 	}
 	if shellRPCURLFlag != "" {
-		opts = append(opts, rpc.WithHorizonURL(shellRPCURLFlag))
-	}
-
-	rpcClient, err := rpc.NewClient(opts...)
-	if err != nil {
-		return errors.WrapValidationError(fmt.Sprintf("failed to create RPC client: %v", err))
+		rpcClient = rpc.NewClientWithURLOption(shellRPCURLFlag, rpc.Network(shellNetworkFlag), shellRPCToken)
+	} else {
+		var clientErr error
+		rpcClient, clientErr = rpc.NewClient(rpc.WithNetwork(rpc.Network(shellNetworkFlag)))
+		if clientErr != nil {
+			return fmt.Errorf("failed to create RPC client: %w", clientErr)
+		}
 	}
 
 	// Initialize simulator runner
@@ -124,7 +125,7 @@ func runShell(cmd *cobra.Command, args []string) error {
 
 		// Parse and execute command
 		if err := executeShellCommand(ctx, session, line); err != nil {
-			if err.Error() == "exit" {
+			if errors.Is(err, errors.ErrShellExit) {
 				break
 			}
 			fmt.Printf("Error: %v\n", err)
@@ -164,7 +165,7 @@ func executeShellCommand(ctx context.Context, session *shell.Session, line strin
 		return nil
 
 	case "exit", "quit":
-		return fmt.Errorf("exit")
+		return errors.ErrShellExit
 
 	case "invoke":
 		return handleInvoke(ctx, session, args)
