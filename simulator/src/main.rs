@@ -1159,7 +1159,7 @@ mod signature_verification_mock_test;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simulator::stack_trace::decode_error;
+
 
     #[test]
     fn test_decode_vm_traps() {
