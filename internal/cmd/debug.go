@@ -66,6 +66,8 @@ var (
 	mockTimeFlag        int64
 	mockBaseFeeFlag     uint32
 	mockGasPriceFlag    uint64
+	asyncFlag           bool
+	asyncTimeoutFlag    int
 )
 
 // DebugCommand holds dependencies for the debug command
@@ -247,7 +249,9 @@ Local WASM Replay Mode:
 	},
 	RunE: func(cmd *cobra.Command, cmdArgs []string) error {
 		if verbose {
-			logger.SetLevel(slog.LevelInfo)
+			logger.SetLevel(slog.LevelDebug)
+		} else if envLevel := os.Getenv("ERST_LOG_LEVEL"); envLevel != "" {
+			logger.SetLevel(logger.ParseLogLevel(envLevel))
 		} else {
 			logger.SetLevel(slog.LevelWarn)
 		}
@@ -474,7 +478,11 @@ Local WASM Replay Mode:
 				}
 				applySimulationFeeMocks(simReq)
 
-				simResp, err = runner.Run(ctx, simReq)
+				if asyncFlag {
+					simResp, err = runAsyncSimulation(ctx, runner, simReq)
+				} else {
+					simResp, err = runner.Run(ctx, simReq)
+				}
 				if err != nil {
 					return errors.WrapSimulationFailed(err, "")
 				}
@@ -584,14 +592,31 @@ Local WASM Replay Mode:
 			return errors.WrapSimulationLogicError("no simulation results generated")
 		}
 
-		// Save flamegraph SVG with dark-mode CSS when profiling is enabled
+		// Save flamegraph with dark-mode CSS when profiling is enabled
 		if ProfileFlag && lastSimResp.Flamegraph != "" {
-			svgContent := visualizer.InjectDarkMode(lastSimResp.Flamegraph)
-			svgFilename := txHash + ".flamegraph.svg"
-			if err := os.WriteFile(svgFilename, []byte(svgContent), 0644); err != nil {
+			// Determine export format
+			var format visualizer.ExportFormat
+			switch ProfileFormatFlag {
+			case "html":
+				format = visualizer.FormatHTML
+			case "svg":
+				format = visualizer.FormatSVG
+			default:
+				format = visualizer.FormatHTML // Default to interactive HTML
+			}
+
+			// Generate output in the requested format
+			content := visualizer.ExportFlamegraph(lastSimResp.Flamegraph, format)
+			filename := txHash + format.GetFileExtension()
+
+			if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 				fmt.Printf("%s Failed to write flamegraph: %v\n", visualizer.Warning(), err)
 			} else {
-				fmt.Printf("%s Flamegraph saved: %s\n", visualizer.Success(), svgFilename)
+				formatDesc := "interactive HTML"
+				if format == visualizer.FormatSVG {
+					formatDesc = "SVG"
+				}
+				fmt.Printf("%s Flamegraph saved: %s (%s)\n", visualizer.Success(), filename, formatDesc)
 			}
 		}
 
@@ -1165,6 +1190,50 @@ func findDeprecatedHostFunction(input string) (string, bool) {
 	return "", false
 }
 
+func runAsyncSimulation(ctx context.Context, runner simulator.RunnerInterface, req *simulator.SimulationRequest) (*simulator.SimulationResponse, error) {
+	async := simulator.NewAsyncRunner(runner)
+
+	spinner := watch.NewSpinner()
+	spinner.Start("Submitting simulation job...")
+
+	jobID, err := async.Submit(req)
+	if err != nil {
+		spinner.StopWithError("Failed to submit simulation")
+		return nil, fmt.Errorf("async submit failed: %w", err)
+	}
+
+	spinner.StopWithMessage(fmt.Sprintf("Job submitted: %s", jobID))
+
+	pollSpinner := watch.NewSpinner()
+	pollSpinner.Start("Polling for simulation result...")
+
+	cfg := simulator.PollConfig{
+		Interval: 500 * time.Millisecond,
+		Timeout:  time.Duration(asyncTimeoutFlag) * time.Second,
+	}
+
+	job, err := async.Wait(ctx, jobID, cfg)
+	if err != nil {
+		pollSpinner.StopWithError("Simulation timed out or was cancelled")
+		return nil, fmt.Errorf("async poll failed: %w", err)
+	}
+
+	defer async.Cleanup(jobID)
+
+	if job.Status == simulator.JobStatusFailed {
+		pollSpinner.StopWithError("Simulation failed")
+		return nil, fmt.Errorf("simulation error: %s", job.Error)
+	}
+
+	elapsed := ""
+	if job.CompletedAt != nil {
+		elapsed = fmt.Sprintf(" (%.1fs)", job.CompletedAt.Sub(job.SubmittedAt).Seconds())
+	}
+	pollSpinner.StopWithMessage(fmt.Sprintf("Simulation completed%s", elapsed))
+
+	return job.Response, nil
+}
+
 func init() {
 	debugCmd.Flags().StringVarP(&networkFlag, "network", "n", "mainnet", "Stellar network (auto-detected when omitted; testnet, mainnet, futurenet)")
 	debugCmd.Flags().StringVar(&rpcURLFlag, "rpc-url", "", "Custom RPC URL")
@@ -1194,6 +1263,8 @@ func init() {
 	debugCmd.Flags().Int64Var(&mockTimeFlag, "mock-time", 0, "Fix the ledger timestamp for deterministic local simulation (Unix epoch seconds); 0 = disabled")
 	debugCmd.Flags().Uint32Var(&mockBaseFeeFlag, "mock-base-fee", 0, "Override base fee (stroops) for local fee sufficiency checks")
 	debugCmd.Flags().Uint64Var(&mockGasPriceFlag, "mock-gas-price", 0, "Override gas price multiplier for local fee sufficiency checks")
+	debugCmd.Flags().BoolVar(&asyncFlag, "async", false, "Submit simulation in background and poll for result (avoids timeouts on heavy traces)")
+	debugCmd.Flags().IntVar(&asyncTimeoutFlag, "async-timeout", 300, "Timeout in seconds for async simulation polling")
 
 	_ = debugCmd.RegisterFlagCompletionFunc("network", completeNetworkFlag)
 	_ = debugCmd.RegisterFlagCompletionFunc("compare-network", completeNetworkFlag)

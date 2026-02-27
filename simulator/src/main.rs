@@ -68,6 +68,7 @@ fn send_error(msg: String) {
         source_location: None,
         stack_trace: Some(trace),
         wasm_offset: None,
+        linear_memory_dump: None,
     };
     if let Ok(json) = serde_json::to_string(&res) {
         println!("{}", json);
@@ -341,6 +342,7 @@ fn main() {
             source_location: None,
             stack_trace: None,
             wasm_offset: None,
+            linear_memory_dump: None,
         };
         if let Ok(json) = serde_json::to_string(&res) {
             println!("{}", json);
@@ -372,6 +374,7 @@ fn main() {
                 source_location: None,
                 stack_trace: None,
                 wasm_offset: None,
+                linear_memory_dump: None,
             };
             println!(
                 "{}",
@@ -721,6 +724,7 @@ fn main() {
                         source_location: None,
                         stack_trace: None,
                         wasm_offset: None,
+                        linear_memory_dump: None,
                     };
 
                     if let Ok(json) = serde_json::to_string(&response) {
@@ -752,8 +756,9 @@ fn main() {
                 // mappable source location so callers can correlate failures.
                 source_location: source_mapper
                     .as_ref()
-                    .and_then(|m| m.map_wasm_offset_to_source(0))
+                    .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
                     .and_then(|loc| serde_json::to_string(&loc).ok()),
+                linear_memory_dump: None,
             };
 
             if let Ok(json) = serde_json::to_string(&response) {
@@ -810,6 +815,7 @@ fn main() {
                 source_location,
                 stack_trace: Some(wasm_trace),
                 wasm_offset,
+                linear_memory_dump: None,
             };
             if let Ok(json) = serde_json::to_string(&response) {
                 println!("{}", json);
@@ -854,6 +860,7 @@ fn main() {
                 source_location: None,
                 stack_trace: Some(wasm_trace),
                 wasm_offset: None,
+                linear_memory_dump: None,
             };
             if let Ok(json) = serde_json::to_string(&response) {
                 println!("{}", json);
@@ -1021,8 +1028,13 @@ pub fn decode_error(raw: &str) -> String {
             .to_string();
     }
 
-    if lower.contains("budget") || lower.contains("cpu limit") || lower.contains("mem limit") {
-        return "Resource limit exceeded — the transaction consumed more CPU instructions or memory than the protocol-21 budget allows.".to_string();
+    // Look for "Instruction: <opcode>" pattern in the raw error
+    if let Some(start) = raw.find("Instruction: ") {
+        let instr_start = start + "Instruction: ".len();
+        let rest = &raw[instr_start..];
+        // Find the end of the instruction (quote or end of string)
+        let end = rest.find('"').unwrap_or(rest.len());
+        return rest[..end].to_string();
     }
 
     if lower.contains("missing") || lower.contains("not found") {
@@ -1043,6 +1055,7 @@ pub fn decode_error(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use simulator::stack_trace::decode_error;
 
     #[test]
     fn test_decode_vm_traps() {

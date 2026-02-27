@@ -238,7 +238,8 @@ mod tests {
     #[test]
     fn test_snapshot_from_empty_map() {
         let entries = HashMap::new();
-        let snapshot = LedgerSnapshot::from_base64_map(&entries).expect("Failed to create snapshot from empty map");
+        let snapshot = LedgerSnapshot::from_base64_map(&entries)
+            .expect("Failed to create snapshot from empty map");
         assert!(snapshot.is_empty());
     }
 
@@ -276,7 +277,10 @@ mod tests {
 
         let result = LedgerSnapshot::from_base64_map(&entries);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SnapshotError::Base64Decode(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            SnapshotError::Base64Decode(_)
+        ));
     }
 
     #[test]
