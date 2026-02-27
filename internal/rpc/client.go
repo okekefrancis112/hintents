@@ -955,6 +955,13 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 		return nil, errors.WrapMarshalFailed(err)
 	}
 
+	targetURL := c.HorizonURL
+	if c.Network == Testnet && targetURL == "" {
+		targetURL = TestnetSorobanURL
+	} else if c.Network == Mainnet && targetURL == "" {
+		targetURL = MainnetSorobanURL
+	} else if c.Network == Futurenet && targetURL == "" {
+		targetURL = FuturenetSorobanURL
 	// Validate payload size before attempting to send to network
 	if err := ValidatePayloadSize(int64(len(bodyBytes))); err != nil {
 		return nil, err
