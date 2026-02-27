@@ -1160,7 +1160,6 @@ mod signature_verification_mock_test;
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_decode_vm_traps() {
         assert!(
