@@ -111,6 +111,9 @@ func NewParser(data []byte) (*Parser, error) {
 func parseWASM(data []byte) (*Parser, error) {
 	sections := parseWASMSections(data)
 
+	var dwarfData *dwarf.Data
+	var err error
+
 	infoSec, ok := sections[".debug_info"]
 	if !ok || len(infoSec) == 0 {
 		return nil, ErrNoDebugInfo
@@ -120,7 +123,7 @@ func parseWASM(data []byte) (*Parser, error) {
 	rangesSec := sections[".debug_ranges"]
 	strSec := sections[".debug_str"]
 
-	dwarfData, err := dwarf.New(abbrevSec, nil, nil, infoSec, lineSec, nil, rangesSec, strSec)
+	dwarfData, err = dwarf.New(abbrevSec, nil, nil, infoSec, lineSec, nil, rangesSec, strSec)
 	if dwarfData == nil || err != nil {
 		// No DWARF info in WASM
 		return nil, ErrNoDebugInfo
@@ -619,18 +622,25 @@ func (p *Parser) BinaryType() string {
 	return p.binaryType
 }
 
-// InlinedSubroutineInfo describes a single inlined subroutine entry from DWARF.
+// InlinedSubroutineInfo describes a single inlined subroutine found in the
+// DWARF debug information.
 type InlinedSubroutineInfo struct {
-	Name            string
-	DemangledName   string
-	CallSite        SourceLocation
-	InlinedLocation SourceLocation
+	Name            string         // raw name
+	DemangledName   string         // demangled name for display
+	CallSite        SourceLocation // location where the call was written
+	InlinedLocation SourceLocation // location inside the inlined body
 	LowPC           uint64
 	HighPC          uint64
 }
 
+// GetInlinedSubroutines returns all inlined subroutines that contain the given
+// address. It is an alias for ResolveInlinedChain.
+func (p *Parser) GetInlinedSubroutines(addr uint64) ([]InlinedSubroutineInfo, error) {
+	return p.ResolveInlinedChain(addr)
+}
+
 // ResolveInlinedChain returns the chain of inlined subroutines that contain
-// the given address. The result is ordered from outermost to innermost.
+// the given address, ordered from outermost caller to innermost inlined body.
 func (p *Parser) ResolveInlinedChain(addr uint64) ([]InlinedSubroutineInfo, error) {
 	if p.data == nil {
 		return nil, ErrNoDebugInfo
@@ -644,51 +654,45 @@ func (p *Parser) ResolveInlinedChain(addr uint64) ([]InlinedSubroutineInfo, erro
 		if err != nil || entry == nil {
 			break
 		}
-		if entry.Tag != dwarf.TagInlinedSubroutine {
-			continue
+
+		if entry.Tag == dwarf.TagInlinedSubroutine {
+			lowPC, _ := entry.Val(dwarf.AttrLowpc).(uint64)
+			highPC, _ := entry.Val(dwarf.AttrHighpc).(uint64)
+
+			if addr >= lowPC && addr < highPC {
+				info := InlinedSubroutineInfo{
+					LowPC:  lowPC,
+					HighPC: highPC,
+				}
+				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+					info.Name = name
+					info.DemangledName = nameDemangle(name)
+				}
+				if line, ok := entry.Val(dwarf.AttrCallLine).(int64); ok {
+					info.CallSite.Line = int(line)
+				}
+				if col, ok := entry.Val(dwarf.AttrCallColumn).(int64); ok {
+					info.CallSite.Column = int(col)
+				}
+				if file, ok := entry.Val(dwarf.AttrCallFile).(string); ok {
+					info.CallSite.File = file
+				}
+				if line, ok := entry.Val(dwarf.AttrDeclLine).(int64); ok {
+					info.InlinedLocation.Line = int(line)
+				}
+				if file, ok := entry.Val(dwarf.AttrDeclFile).(string); ok {
+					info.InlinedLocation.File = file
+				}
+				chain = append(chain, info)
+			}
 		}
-
-		lowPC, _ := entry.Val(dwarf.AttrLowpc).(uint64)
-		highPC, _ := entry.Val(dwarf.AttrHighpc).(uint64)
-
-		// AttrHighpc may be relative offset
-		if highPC < lowPC {
-			highPC = lowPC + highPC
-		}
-
-		if addr < lowPC || addr >= highPC {
-			continue
-		}
-
-		name, _ := entry.Val(dwarf.AttrName).(string)
-		callFile, _ := entry.Val(dwarf.AttrCallFile).(int64)
-		callLine, _ := entry.Val(dwarf.AttrCallLine).(int64)
-
-		info := InlinedSubroutineInfo{
-			Name:          name,
-			DemangledName: nameDemangle(name),
-			CallSite: SourceLocation{
-				Line: int(callLine),
-			},
-			InlinedLocation: SourceLocation{},
-			LowPC:           lowPC,
-			HighPC:          highPC,
-		}
-		_ = callFile // file resolution requires compilation unit context
-		chain = append(chain, info)
 	}
 
 	return chain, nil
 }
 
-// GetInlinedSubroutines returns all inlined subroutine entries that overlap
-// the given address. If p has no debug data, ErrNoDebugInfo is returned.
-func (p *Parser) GetInlinedSubroutines(addr uint64) ([]InlinedSubroutineInfo, error) {
-	return p.ResolveInlinedChain(addr)
-}
-
-// findSubprogramOffset returns the DWARF offset of the named subprogram,
-// or 0 if not found or parser has no data.
+// findSubprogramOffset returns the DWARF offset of the first subprogram
+// entry whose name matches the given function name, or 0 if not found.
 func (p *Parser) findSubprogramOffset(name string) dwarf.Offset {
 	if p.data == nil {
 		return 0
@@ -700,19 +704,17 @@ func (p *Parser) findSubprogramOffset(name string) dwarf.Offset {
 		if err != nil || entry == nil {
 			break
 		}
-		if entry.Tag != dwarf.TagSubprogram {
-			continue
-		}
-		n, _ := entry.Val(dwarf.AttrName).(string)
-		if n == name {
-			return entry.Offset
+		if entry.Tag == dwarf.TagSubprogram {
+			if n, ok := entry.Val(dwarf.AttrName).(string); ok && n == name {
+				return entry.Offset
+			}
 		}
 	}
 	return 0
 }
 
-// resolveFileIndex returns the file name for the given compilation unit
-// offset and file index. Returns "" if the index is invalid or data is nil.
+// resolveFileIndex resolves a DWARF file index (1-based) from a compile unit
+// at the given offset into a file name string. Returns "" for invalid indices.
 func (p *Parser) resolveFileIndex(cuOffset dwarf.Offset, fileIndex int) string {
 	if p.data == nil || fileIndex <= 0 {
 		return ""
@@ -721,7 +723,7 @@ func (p *Parser) resolveFileIndex(cuOffset dwarf.Offset, fileIndex int) string {
 	reader := p.data.Reader()
 	reader.Seek(cuOffset)
 	entry, err := reader.Next()
-	if err != nil || entry == nil {
+	if err != nil || entry == nil || entry.Tag != dwarf.TagCompileUnit {
 		return ""
 	}
 
@@ -731,8 +733,8 @@ func (p *Parser) resolveFileIndex(cuOffset dwarf.Offset, fileIndex int) string {
 	}
 
 	files := lr.Files()
-	if fileIndex >= len(files) {
-		return ""
+	if fileIndex < len(files) && files[fileIndex] != nil {
+		return files[fileIndex].Name
 	}
-	return files[fileIndex].Name
+	return ""
 }

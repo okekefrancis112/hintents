@@ -138,47 +138,116 @@ func (e *MissingLedgerKeyError) Is(target error) bool {
 
 // Wrap functions for consistent error wrapping
 func WrapTransactionNotFound(err error) error {
-	return newErstError(CodeTransactionNotFound, "transaction not found", err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeTransactionNotFound,
+		Message:       "transaction not found",
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapRPCConnectionFailed(err error) error {
-	return newErstError(CodeRPCConnectionFailed, "RPC connection failed", err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeRPCConnectionFailed,
+		Message:       "RPC connection failed",
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapSimulatorNotFound(msg string) error {
-	return newErstError(CodeSimNotFound, msg, nil)
+	return &ErstError{
+		Code:    CodeSimNotFound,
+		Message: msg,
+	}
 }
 
 func WrapSimulationFailed(err error, stderr string) error {
-	return newErstError(CodeSimExecFailed, stderr, err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeSimExecFailed,
+		Message:       stderr,
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapInvalidNetwork(network string) error {
-	return newErstError(CodeInvalidNetwork, network+". Must be one of: testnet, mainnet, futurenet", nil)
+	return &ErstError{
+		Code:    CodeInvalidNetwork,
+		Message: network + ". Must be one of: testnet, mainnet, futurenet",
+	}
 }
 
 func WrapMarshalFailed(err error) error {
-	return newErstError(CodeRPCMarshalFailed, "failed to marshal request", err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeRPCMarshalFailed,
+		Message:       "failed to marshal request",
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapUnmarshalFailed(err error, output string) error {
-	return newErstError(CodeRPCUnmarshalFailed, output, err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeRPCUnmarshalFailed,
+		Message:       output,
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapSimulationLogicError(msg string) error {
-	return newErstError(CodeSimLogicError, msg, nil)
+	return &ErstError{
+		Code:    CodeSimLogicError,
+		Message: msg,
+	}
 }
 
 func WrapRPCTimeout(err error) error {
-	return newErstError(CodeRPCTimeout, "RPC request timed out", err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeRPCTimeout,
+		Message:       "RPC request timed out",
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapAllRPCFailed() error {
-	return newErstError(CodeRPCAllFailed, "all RPC endpoints failed", nil)
+	return &ErstError{
+		Code:    CodeRPCAllFailed,
+		Message: "all RPC endpoints failed",
+	}
 }
 
 func WrapRPCError(url string, msg string, code int) error {
-	return newErstError(CodeRPCError, fmt.Sprintf("from %s: %s (code %d)", url, msg, code), nil)
+	return &ErstError{
+		Code:    CodeRPCError,
+		Message: fmt.Sprintf("from %s: %s (code %d)", url, msg, code),
+	}
 }
 
 func WrapSimCrash(err error, stderr string) error {
@@ -186,65 +255,107 @@ func WrapSimCrash(err error, stderr string) error {
 	if msg == "" && err != nil {
 		msg = err.Error()
 	}
-	return newErstError(CodeSimCrash, msg, err)
+	orig := ""
+	if err != nil {
+		orig = err.Error()
+	}
+	return &ErstError{
+		Code:          CodeSimCrash,
+		Message:       msg,
+		OriginalError: orig,
+		wrapped:       err,
+	}
 }
 
 func WrapValidationError(msg string) error {
-	return newErstError(CodeValidationFailed, msg, nil)
+	return &ErstError{
+		Code:    CodeValidationFailed,
+		Message: msg,
+	}
 }
 
 func WrapProtocolUnsupported(version uint32) error {
-	return newErstError(CodeSimProtoUnsup, fmt.Sprintf("unsupported protocol version: %d", version), nil)
+	return &ErstError{
+		Code:    CodeValidationFailed,
+		Message: fmt.Sprintf("unsupported protocol version: %d", version),
+	}
 }
 
 func WrapCliArgumentRequired(arg string) error {
-	return newErstError(CodeValidationFailed, "--"+arg, nil)
+	return &ErstError{
+		Code:    CodeValidationFailed,
+		Message: "--" + arg,
+	}
 }
 
 func WrapAuditLogInvalid(msg string) error {
-	return newErstError(CodeValidationFailed, msg, nil)
+	return &ErstError{
+		Code:    CodeValidationFailed,
+		Message: msg,
+	}
 }
 
 func WrapSessionNotFound(sessionID string) error {
-	return newErstError(CodeValidationFailed, sessionID, nil)
+	return &ErstError{
+		Code:    CodeValidationFailed,
+		Message: sessionID,
+	}
 }
 
 func WrapUnauthorized(msg string) error {
 	if msg != "" {
-		return newErstError(CodeUnauthorized, msg, nil)
+		return &ErstError{
+			Code:    CodeUnauthorized,
+			Message: msg,
+		}
 	}
-	return newErstError(CodeUnauthorized, "unauthorized", nil)
+	return &ErstError{
+		Code:    CodeUnauthorized,
+		Message: "unauthorized",
+	}
 }
 
 func WrapLedgerNotFound(sequence uint32) error {
-	return &LedgerNotFoundError{
-		Sequence: sequence,
-		Message:  fmt.Sprintf("%v: ledger %d not found (may be archived or not yet created)", ErrLedgerNotFound, sequence),
+	return &ErstError{
+		Code:    CodeLedgerNotFound,
+		Message: fmt.Sprintf("ledger %d not found (may be archived or not yet created)", sequence),
 	}
 }
 
 func WrapLedgerArchived(sequence uint32) error {
-	return &LedgerArchivedError{
-		Sequence: sequence,
-		Message:  fmt.Sprintf("%v: ledger %d has been archived and is no longer available", ErrLedgerArchived, sequence),
+	return &ErstError{
+		Code:    CodeLedgerArchived,
+		Message: fmt.Sprintf("ledger %d has been archived and is no longer available", sequence),
 	}
 }
 
 func WrapRateLimitExceeded() error {
-	return &RateLimitError{
-		Message: fmt.Sprintf("%v, please try again later", ErrRateLimitExceeded),
+	return &ErstError{
+		Code:    CodeRPCRateLimitExceeded,
+		Message: "rate limit exceeded, please try again later",
 	}
 }
 
 func WrapConfigError(msg string, err error) error {
 	if err != nil {
-		return newErstError(CodeConfigFailed, msg+": "+err.Error(), err)
+		return &ErstError{
+			Code:          CodeConfigFailed,
+			Message:       msg + ": " + err.Error(),
+			OriginalError: err.Error(),
+			wrapped:       err,
+		}
 	}
-	return newErstError(CodeConfigFailed, msg, nil)
+	return &ErstError{
+		Code:    CodeConfigFailed,
+		Message: msg,
+	}
 }
 
 func WrapNetworkNotFound(network string) error {
-	return newErstError(CodeNetworkNotFound, network, nil)
+	return &ErstError{
+		Code:    CodeNetworkNotFound,
+		Message: network,
+	}
 }
 
 func WrapWasmInvalid(msg string) error {
@@ -316,10 +427,10 @@ const (
 	// Shared / general
 	CodeValidationFailed ErstErrorCode = "VALIDATION_FAILED"
 	CodeUnknown          ErstErrorCode = "UNKNOWN"
-	CodeUnauthorized     ErstErrorCode = "UNAUTHORIZED"
 	CodeConfigFailed     ErstErrorCode = "CONFIG_ERROR"
-	CodeNetworkNotFound  ErstErrorCode = "NETWORK_NOT_FOUND"
 	CodeInvalidNetwork   ErstErrorCode = "INVALID_NETWORK"
+	CodeNetworkNotFound  ErstErrorCode = "NETWORK_NOT_FOUND"
+	CodeUnauthorized     ErstErrorCode = "UNAUTHORIZED"
 )
 
 // codeToSentinel maps each ErstErrorCode to its corresponding sentinel error
@@ -344,34 +455,30 @@ var codeToSentinel = map[ErstErrorCode]error{
 	CodeSimLogicError:          ErrSimulationLogicError,
 	CodeSimProtoUnsup:          ErrProtocolUnsupported,
 	CodeValidationFailed:       ErrValidationFailed,
-	CodeUnauthorized:           ErrUnauthorized,
+	CodeInvalidNetwork:         ErrInvalidNetwork,
 	CodeConfigFailed:           ErrConfigFailed,
 	CodeNetworkNotFound:        ErrNetworkNotFound,
-	CodeInvalidNetwork:         ErrInvalidNetwork,
+	CodeUnauthorized:           ErrUnauthorized,
 }
 
 // ErstError is the unified error type returned at all RPC and Simulator boundaries.
 // It carries a stable ErstErrorCode for programmatic handling and preserves the
-// original error for backwards compatibility and error chain traversal.
+// original error string in OriginalError for backwards compatibility.
 type ErstError struct {
-	Code     ErstErrorCode
-	Message  string // human-readable summary
-	original error  // wrapped original error, preserved for Unwrap
+	Code          ErstErrorCode
+	Message       string // human-readable summary
+	OriginalError string // raw original error string, always preserved
+	wrapped       error  // original error for Unwrap() chain traversal
 }
 
 func (e *ErstError) Error() string {
-	parts := string(e.Code)
-	if e.Message != "" {
-		parts += ": " + e.Message
+	if e.OriginalError != "" && e.Message != "" && e.Message != e.OriginalError {
+		return string(e.Code) + ": " + e.Message + ": " + e.OriginalError
 	}
-	if e.original != nil && (e.Message == "" || e.Message != e.original.Error()) {
-		if e.Message != "" {
-			parts += ": " + e.original.Error()
-		} else {
-			parts += ": " + e.original.Error()
-		}
+	if e.OriginalError != "" {
+		return string(e.Code) + ": " + e.OriginalError
 	}
-	return parts
+	return string(e.Code) + ": " + e.Message
 }
 
 // Is allows errors.Is to match an ErstError against its corresponding sentinel
@@ -383,18 +490,24 @@ func (e *ErstError) Is(target error) bool {
 	return false
 }
 
-// Unwrap returns the original wrapped error so that errors.Is and errors.As
-// can traverse the full error chain.
+// Unwrap returns the original wrapped error (if any) so that errors.Is can
+// traverse the chain to find the original cause.  When no original error was
+// provided (e.g. via NewSimError), it returns nil; sentinel matching is still
+// handled by Is().
 func (e *ErstError) Unwrap() error {
-	return e.original
+	return e.wrapped
 }
 
 // newErstError is the internal constructor.
 func newErstError(code ErstErrorCode, message string, original error) *ErstError {
-	if message == "" && original != nil {
-		message = original.Error()
+	orig := ""
+	if original != nil {
+		orig = original.Error()
 	}
-	return &ErstError{Code: code, Message: message, original: original}
+	if message == "" {
+		message = orig
+	}
+	return &ErstError{Code: code, Message: message, OriginalError: orig}
 }
 
 // --- Typed constructors for RPC boundary ---

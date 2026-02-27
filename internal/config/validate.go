@@ -18,8 +18,6 @@ var defaultValidators = []Validator{
 	CrashReportingValidator{},
 }
 
-const maxRequestTimeout = 300
-
 type TimeoutValidator struct{}
 
 func (TimeoutValidator) Validate(cfg *Config) error {

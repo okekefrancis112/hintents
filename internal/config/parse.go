@@ -135,7 +135,7 @@ func (c *Config) parseTOML(content string) error {
 			case "false", "0", "no":
 				c.CrashReporting = false
 			default:
-				return fmt.Errorf("invalid value for crash_reporting: %q (expected true/false/yes/no/1/0)", value)
+				return fmt.Errorf("invalid crash_reporting value: %q (expected true/false/yes/no/1/0)", value)
 			}
 		case "crash_endpoint":
 			c.CrashEndpoint = value
@@ -144,7 +144,7 @@ func (c *Config) parseTOML(content string) error {
 		case "request_timeout":
 			n, err := strconv.Atoi(value)
 			if err != nil {
-				return fmt.Errorf("invalid value for request_timeout: %q (expected integer)", value)
+				return fmt.Errorf("invalid request_timeout value: %q (expected integer)", value)
 			}
 			c.RequestTimeout = n
 		}

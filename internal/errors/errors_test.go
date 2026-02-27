@@ -150,14 +150,9 @@ func TestErstError_Is_UnknownCodeMatchesNothing(t *testing.T) {
 	assert.False(t, errors.Is(erstErr, ErrSimulationFailed))
 }
 
-func TestErstError_Unwrap_ReturnsOriginal(t *testing.T) {
-	origErr := fmt.Errorf("crash")
-	erstErr := NewSimError(CodeSimCrash, origErr)
-	assert.Equal(t, origErr, erstErr.Unwrap(), "Unwrap should return the original error for chain traversal")
-
-	// When no original error is provided, Unwrap returns nil
-	erstErrNoOrig := NewSimErrorMsg(CodeSimCrash, "crash message")
-	assert.Nil(t, erstErrNoOrig.Unwrap(), "Unwrap should return nil when no original error was wrapped")
+func TestErstError_Unwrap_ReturnsNil(t *testing.T) {
+	erstErr := NewSimError(CodeSimCrash, fmt.Errorf("crash"))
+	assert.Nil(t, erstErr.Unwrap(), "Unwrap should return nil; Is() handles matching")
 }
 
 func TestShellExitSentinel(t *testing.T) {

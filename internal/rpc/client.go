@@ -162,7 +162,7 @@ func (e *AllNodesFailedError) Error() string {
 	return fmt.Sprintf("all RPC endpoints failed: [%s]", strings.Join(reasons, ", "))
 }
 
-// Is allows errors.Is(err, errors.ErrAllRPCFailed) to match AllNodesFailedError.
+// Is allows errors.Is to match AllNodesFailedError against the ErrAllRPCFailed sentinel.
 func (e *AllNodesFailedError) Is(target error) bool {
 	return target == errors.ErrAllRPCFailed
 }
@@ -649,16 +649,24 @@ func (c *Client) handleLedgerError(err error, sequence uint32) error {
 		switch hErr.Problem.Status {
 		case 404:
 			logger.Logger.Warn("Ledger not found", "sequence", sequence, "status", 404)
-			return errors.WrapLedgerNotFound(sequence)
+			return &errors.LedgerNotFoundError{
+				Sequence: sequence,
+				Message:  fmt.Sprintf("ledger %d not found", sequence),
+			}
 		case 410:
 			logger.Logger.Warn("Ledger archived", "sequence", sequence, "status", 410)
-			return errors.WrapLedgerArchived(sequence)
+			return &errors.LedgerArchivedError{
+				Sequence: sequence,
+				Message:  fmt.Sprintf("ledger %d has been archived", sequence),
+			}
 		case 413:
 			logger.Logger.Warn("Response too large", "sequence", sequence, "status", 413)
 			return errors.WrapRPCResponseTooLarge(c.HorizonURL)
 		case 429:
 			logger.Logger.Warn("Rate limit exceeded", "sequence", sequence, "status", 429)
-			return errors.WrapRateLimitExceeded()
+			return &errors.RateLimitError{
+				Message: "rate limit exceeded, please try again later",
+			}
 		default:
 			logger.Logger.Error("Horizon error", "sequence", sequence, "status", hErr.Problem.Status, "detail", hErr.Problem.Detail)
 			return errors.WrapRPCError(c.HorizonURL, hErr.Problem.Detail, hErr.Problem.Status)
@@ -775,6 +783,7 @@ func (c *Client) GetLedgerEntries(ctx context.Context, keys []string) (map[strin
 
 	// Single batch - use existing failover logic
 	attempts := c.endpointAttempts()
+	var failures []NodeFailure
 	for attempt := 0; attempt < attempts; attempt++ {
 		fetchedEntries, err := c.getLedgerEntriesAttempt(ctx, keysToFetch)
 		if err == nil {
@@ -799,7 +808,7 @@ func (c *Client) GetLedgerEntries(ctx context.Context, keys []string) (map[strin
 			return nil, err
 		}
 	}
-	return nil, &AllNodesFailedError{Failures: []NodeFailure{}}
+	return nil, &AllNodesFailedError{Failures: failures}
 }
 
 // getLedgerEntriesConcurrent fetches multiple batches concurrently with timeout handling

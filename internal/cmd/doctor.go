@@ -268,8 +268,7 @@ func checkConfigTOML(verbose bool) DependencyStatus {
 			continue
 		}
 
-		// simple syntax sniff: non-empty, non-comment lines must contain '='
-		// with a non-empty value after the '='
+		// simple syntax sniff: non-empty, non-comment lines must contain 'key = value'
 		for ln, line := range strings.Split(string(data), "\n") {
 			trim := strings.TrimSpace(line)
 			if trim == "" || strings.HasPrefix(trim, "#") || strings.HasPrefix(trim, "[") {
@@ -282,11 +281,12 @@ func checkConfigTOML(verbose bool) DependencyStatus {
 				}
 				return dep
 			}
-			// Check that there is a non-empty value after '='
+			// key must be non-empty and value must be non-empty
+			key := strings.TrimSpace(trim[:eqIdx])
 			val := strings.TrimSpace(trim[eqIdx+1:])
-			if val == "" {
+			if key == "" || val == "" {
 				if verbose {
-					dep.FixHint = fmt.Sprintf("%s (line %d has empty value)", dep.FixHint, ln+1)
+					dep.FixHint = fmt.Sprintf("%s (line %d has invalid key=value)", dep.FixHint, ln+1)
 				}
 				return dep
 			}

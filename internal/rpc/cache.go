@@ -49,8 +49,9 @@ type CachedEntry struct {
 }
 
 var (
-	cacheDB *sql.DB
-	cacheMu sync.Mutex
+	cacheDB   *sql.DB
+	cacheOnce sync.Once
+	cacheMu   sync.Mutex
 )
 
 // cacheSchema creates the rpc_cache table and indexes.

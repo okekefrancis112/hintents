@@ -14,12 +14,27 @@ import (
 	"github.com/dotandev/hintents/internal/errors"
 )
 
+const defaultRequestTimeout = 15
+
+var defaultConfig = &Config{
+	RpcUrl:         "https://soroban-testnet.stellar.org",
+	Network:        NetworkTestnet,
+	SimulatorPath:  "",
+	LogLevel:       "info",
+	CachePath:      filepath.Join(os.ExpandEnv("$HOME"), ".erst", "cache"),
+	RequestTimeout: defaultRequestTimeout,
+}
+
 type Parser interface {
 	Parse(*Config) error
 }
 
 type DefaultAssigner interface {
 	Apply(*Config)
+}
+
+type Validator interface {
+	Validate(*Config) error
 }
 
 type CompositeValidator struct {
@@ -48,7 +63,18 @@ func (RequiredFieldsValidator) Validate(cfg *Config) error {
 	return nil
 }
 
+type NetworkValidator struct{}
+
+func (NetworkValidator) Validate(cfg *Config) error {
+	if cfg.Network != "" && !validNetworks[string(cfg.Network)] {
+		return errors.WrapInvalidNetwork(string(cfg.Network))
+	}
+	return nil
+}
+
 type RequestTimeoutValidator struct{}
+
+const maxRequestTimeout = 300
 
 func (RequestTimeoutValidator) Validate(cfg *Config) error {
 	if cfg.RequestTimeout == 0 {
@@ -219,7 +245,10 @@ func Load() (*Config, error) {
 
 	ConfigDefaultsAssigner{}.Apply(cfg)
 
-	// Phase 2: Validate.
+	// Phase 2: Merge defaults for any fields still unset.
+	cfg.MergeDefaults()
+
+	// Phase 3: Validate.
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -231,6 +260,11 @@ type fileParser struct{}
 
 func (fileParser) Parse(cfg *Config) error {
 	return cfg.loadFromFile()
+}
+
+// MergeDefaults fills any zero-value fields in the Config with sensible defaults.
+func (c *Config) MergeDefaults() {
+	ConfigDefaultsAssigner{}.Apply(c)
 }
 
 // SaveConfig saves the configuration to disk (JSON format)
@@ -255,11 +289,6 @@ func SaveConfig(config *Config) error {
 	}
 
 	return nil
-}
-
-// MergeDefaults fills in unset fields with default values.
-func (c *Config) MergeDefaults() {
-	ConfigDefaultsAssigner{}.Apply(c)
 }
 
 func (c *Config) Validate() error {
@@ -291,4 +320,46 @@ func (c *Config) String() string {
 		"Config{RPC: %s, Network: %s, LogLevel: %s, CachePath: %s}",
 		c.RpcUrl, c.Network, c.LogLevel, c.CachePath,
 	)
+}
+
+func DefaultConfig() *Config {
+	return &Config{
+		RpcUrl:         defaultConfig.RpcUrl,
+		Network:        defaultConfig.Network,
+		SimulatorPath:  defaultConfig.SimulatorPath,
+		LogLevel:       defaultConfig.LogLevel,
+		CachePath:      defaultConfig.CachePath,
+		RequestTimeout: defaultConfig.RequestTimeout,
+	}
+}
+
+func NewConfig(rpcUrl string, network Network) *Config {
+	return &Config{
+		RpcUrl:         rpcUrl,
+		Network:        network,
+		SimulatorPath:  defaultConfig.SimulatorPath,
+		LogLevel:       defaultConfig.LogLevel,
+		CachePath:      defaultConfig.CachePath,
+		RequestTimeout: defaultConfig.RequestTimeout,
+	}
+}
+
+func (c *Config) WithSimulatorPath(path string) *Config {
+	c.SimulatorPath = path
+	return c
+}
+
+func (c *Config) WithLogLevel(level string) *Config {
+	c.LogLevel = level
+	return c
+}
+
+func (c *Config) WithCachePath(path string) *Config {
+	c.CachePath = path
+	return c
+}
+
+func (c *Config) WithRequestTimeout(seconds int) *Config {
+	c.RequestTimeout = seconds
+	return c
 }

@@ -773,6 +773,22 @@ Local WASM Replay Mode:
 	},
 }
 
+// parseEnvelopeXDRInput trims whitespace from the raw input and validates that
+// it is a valid base64-encoded Stellar transaction envelope XDR.
+func parseEnvelopeXDRInput(input string) (string, error) {
+	envelopeXdr := strings.TrimSpace(input)
+	if envelopeXdr == "" {
+		return "", fmt.Errorf("stdin is empty: provide a base64 transaction envelope XDR")
+	}
+
+	var envelope xdr.TransactionEnvelope
+	if err := xdr.SafeUnmarshalBase64(envelopeXdr, &envelope); err != nil {
+		return "", fmt.Errorf("stdin does not contain a valid base64 transaction envelope XDR: %w", err)
+	}
+
+	return envelopeXdr, nil
+}
+
 // runDemoMode prints sample output without network/WASM - for testing color detection.
 func runDemoMode(cmdArgs []string) error {
 	txHash := "5c0a1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab"
