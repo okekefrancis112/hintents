@@ -5,7 +5,7 @@ package rpc
 
 import (
 	"encoding/base64"
-	"strings"
+	"fmt"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -24,7 +24,7 @@ func TestVerifyLedgerEntryHash_ValidKey(t *testing.T) {
 
 	contractAddr := xdr.ScAddress{
 		Type:       xdr.ScAddressTypeScAddressTypeContract,
-		ContractId: &contractID,
+		ContractId: (*xdr.ContractId)(&contractID),
 	}
 
 	sym := xdr.ScSymbol("COUNTER")
@@ -207,7 +207,7 @@ func createTestLedgerKey(t *testing.T, seed int) string {
 
 	contractAddr := xdr.ScAddress{
 		Type:       xdr.ScAddressTypeScAddressTypeContract,
-		ContractId: &contractID,
+		ContractId: (*xdr.ContractId)(&contractID),
 	}
 
 	sym := xdr.ScSymbol("COUNTER")
@@ -246,7 +246,7 @@ func BenchmarkVerifyLedgerEntries(b *testing.B) {
 	sizes := []int{10, 50, 100, 500}
 
 	for _, size := range sizes {
-		b.Run(strings.Join([]string{"size", string(rune(size))}, "_"), func(b *testing.B) {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
 			requestedKeys := make([]string, size)
 			returnedEntries := make(map[string]string, size)
 

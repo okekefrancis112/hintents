@@ -6,7 +6,6 @@ package report
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -159,14 +158,16 @@ func TestFilenameGeneration(t *testing.T) {
 }
 
 func TestInvalidOutputDir(t *testing.T) {
-	// Use a path nested under a file (not a directory) to ensure failure
-	// on all platforms. On Unix, /dev/null is a file; on Windows, NUL is
-	// a reserved device name that cannot be a directory.
+	// Use a path that's invalid on both Unix and Windows
+	// On Unix, /dev/null is a device file, not a directory
+	// On Windows, NUL is a reserved device name that can't be a directory
 	var invalidDir string
-	if runtime.GOOS == "windows" {
-		invalidDir = `NUL\impossible`
+	if os.PathSeparator == '\\' {
+		// Windows: use a reserved device name
+		invalidDir = "NUL\\invalid\\path"
 	} else {
-		invalidDir = "/dev/null/impossible"
+		// Unix: use a path under /dev/null which can't be a directory
+		invalidDir = "/dev/null/invalid/path"
 	}
 
 	_, err := NewExporter(invalidDir)

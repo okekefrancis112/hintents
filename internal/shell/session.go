@@ -51,7 +51,7 @@ type InvocationResult struct {
 
 // NewSession creates a new interactive shell session
 func NewSession(runner simulator.RunnerInterface, rpcClient *rpc.Client, network rpc.Network) *Session {
-	now := time.Now().UnixNano()
+	now := time.Now().Unix()
 	return &Session{
 		runner:         runner,
 		rpcClient:      rpcClient,
@@ -85,7 +85,7 @@ func (s *Session) Invoke(ctx context.Context, contractID, function string, args 
 	}
 
 	// Execute simulation
-	resp, err := s.runner.Run(req)
+	resp, err := s.runner.Run(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("simulation failed: %w", err)
 	}
@@ -126,7 +126,11 @@ func (s *Session) updateLedgerState(resp *simulator.SimulationResponse) {
 	s.ledgerSequence++
 
 	// Update timestamp
-	s.timestamp = time.Now().UnixNano()
+	now := time.Now().Unix()
+	if now <= s.timestamp {
+		now = s.timestamp + 1
+	}
+	s.timestamp = now
 
 	// TODO: Extract and update ledger entries from simulation response
 	// This would involve parsing the ResultMetaXDR to get state changes

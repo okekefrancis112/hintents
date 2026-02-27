@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 )
 
 var (
@@ -69,16 +68,8 @@ type Frame struct {
 // Parser handles DWARF debug information extraction
 type Parser struct {
 	data       *dwarf.Data
+	reader     *dwarf.Reader
 	binaryType string // "wasm", "elf", "macho", "pe"
-}
-
-// NewParserFromFile creates a new DWARF parser from a file path
-func NewParserFromFile(path string) (*Parser, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file %s: %w", path, err)
-	}
-	return NewParser(data)
 }
 
 // NewParser creates a new DWARF parser from a binary
@@ -118,22 +109,20 @@ func NewParser(data []byte) (*Parser, error) {
 
 // parseWASM parses DWARF info from a WASM binary
 func parseWASM(data []byte) (*Parser, error) {
-	// For WASM, we need to look for custom sections starting with ".debug_"
 	sections := parseWASMSections(data)
 
-	var dwarfData *dwarf.Data
-	var err error
-
-	// Look for .debug_info section; dwarf.New expects the 8 canonical DWARF sections.
-	if infoSection, ok := sections[".debug_info"]; ok {
-		abbrev := sections[".debug_abbrev"]
-		line := sections[".debug_line"]
-		ranges := sections[".debug_ranges"]
-		str := sections[".debug_str"]
-		dwarfData, err = dwarf.New(abbrev, nil, nil, infoSection, line, nil, ranges, str)
+	infoSec, ok := sections[".debug_info"]
+	if !ok || len(infoSec) == 0 {
+		return nil, ErrNoDebugInfo
 	}
+	abbrevSec := sections[".debug_abbrev"]
+	lineSec := sections[".debug_line"]
+	rangesSec := sections[".debug_ranges"]
+	strSec := sections[".debug_str"]
 
+	dwarfData, err := dwarf.New(abbrevSec, nil, nil, infoSec, lineSec, nil, rangesSec, strSec)
 	if dwarfData == nil || err != nil {
+		// No DWARF info in WASM
 		return nil, ErrNoDebugInfo
 	}
 
@@ -143,75 +132,79 @@ func parseWASM(data []byte) (*Parser, error) {
 	}, nil
 }
 
-// parseWASMSections parses custom sections from a WASM binary
+// parseWASMSections parses the section table of a WASM binary and returns a
+// map of custom-section names to their content bytes.  Only custom sections
+// (section ID 0) are collected; all other sections are skipped.
 func parseWASMSections(data []byte) map[string][]byte {
 	sections := make(map[string][]byte)
 
-	i := 8 // Skip WASM magic + version
-	for i < len(data) {
-		sectionID := data[i]
-		i++
+	pos := 8 // skip 4-byte magic + 4-byte version
+	for pos < len(data) {
+		// Read section ID (1 byte).
+		if pos >= len(data) {
+			break
+		}
+		sectionID := data[pos]
+		pos++
 
-		// Read section size (LEB128 unsigned)
-		sectionSize, n := readULEB128(data[i:])
+		// Read section size as an unsigned LEB128 varint.
+		sectionSize, n := readULEB128(data, pos)
 		if n == 0 {
 			break
 		}
-		i += n
+		pos += n
 
-		sectionEnd := i + int(sectionSize)
+		sectionEnd := pos + int(sectionSize)
 		if sectionEnd > len(data) {
 			break
 		}
 
-		if sectionID == 0 { // Custom section
-			// Read name length (LEB128 unsigned)
-			nameLen, nn := readULEB128(data[i:])
-			if nn == 0 {
-				i = sectionEnd
+		if sectionID == 0 { // custom section
+			// The first field inside the custom section is the name, also
+			// length-prefixed with a LEB128 integer.
+			nameLen, m := readULEB128(data, pos)
+			if m == 0 || pos+m+int(nameLen) > sectionEnd {
+				pos = sectionEnd
 				continue
 			}
-			nameStart := i + nn
-			nameEnd := nameStart + int(nameLen)
-			if nameEnd > sectionEnd {
-				i = sectionEnd
-				continue
-			}
-
-			name := string(data[nameStart:nameEnd])
-			sections[name] = data[nameEnd:sectionEnd]
+			nameStart := pos + m
+			name := string(data[nameStart : nameStart+int(nameLen)])
+			content := data[nameStart+int(nameLen) : sectionEnd]
+			sections[name] = content
 		}
 
-		i = sectionEnd
+		pos = sectionEnd
 	}
 
 	return sections
 }
 
-// readULEB128 decodes an unsigned LEB128 value from buf.
-// Returns the value and the number of bytes consumed; 0 bytes means the buffer
-// was too short.
-func readULEB128(buf []byte) (uint64, int) {
-	var val uint64
+// readULEB128 decodes an unsigned little-endian base-128 integer starting at
+// data[pos].  It returns the value and the number of bytes consumed.  If the
+// data is truncated or malformed it returns (0, 0).
+func readULEB128(data []byte, pos int) (uint64, int) {
+	var result uint64
 	var shift uint
-	for i, b := range buf {
-		val |= uint64(b&0x7f) << shift
-		if b&0x80 == 0 {
-			return val, i + 1
-		}
+	for i := pos; i < len(data); i++ {
+		b := data[i]
+		result |= uint64(b&0x7f) << shift
 		shift += 7
+		if b&0x80 == 0 {
+			return result, i - pos + 1
+		}
 		if shift >= 64 {
-			return 0, 0
+			return 0, 0 // overflow
 		}
 	}
-	return 0, 0
+	return 0, 0 // truncated
 }
 
 // parseELF parses DWARF info from an ELF binary
 func parseELF(data []byte) (*Parser, error) {
+	// Create a temporary file to use debug/elf package
 	elfFile, err := elf.NewFile(bytesToReader(data))
 	if err != nil {
-		return nil, ErrInvalidWASM
+		return nil, err
 	}
 
 	dwarfData, err := elfFile.DWARF()
@@ -264,13 +257,14 @@ func parsePE(data []byte) (*Parser, error) {
 // bytesToReader converts a byte slice to an io.ReaderAt
 type bytesReader struct {
 	data []byte
+	off  int
 }
 
 func (r *bytesReader) ReadAt(p []byte, off int64) (n int, err error) {
 	if off >= int64(len(r.data)) {
 		return 0, io.EOF
 	}
-	n = copy(p, r.data[off:])
+	n = copy(p, r.data[int(off):])
 	return n, nil
 }
 
@@ -289,7 +283,10 @@ func (p *Parser) GetSubprograms() ([]SubprogramInfo, error) {
 	reader := p.data.Reader()
 	for {
 		entry, err := reader.Next()
-		if err != nil || entry == nil {
+		if err != nil {
+			break
+		}
+		if entry == nil {
 			break
 		}
 
@@ -308,54 +305,55 @@ func (p *Parser) GetSubprograms() ([]SubprogramInfo, error) {
 func (p *Parser) extractSubprogram(entry *dwarf.Entry) (SubprogramInfo, error) {
 	info := SubprogramInfo{}
 
+	// Extract name
 	if name, ok := entry.Val(dwarf.AttrName).(string); ok {
 		info.Name = name
 	}
 
+	// Extract demangled name (if available)
 	if demangled, ok := entry.Val(dwarf.AttrLinkageName).(string); ok {
 		info.DemangledName = demangled
 	} else {
 		info.DemangledName = nameDemangle(info.Name)
 	}
 
+	// Extract low PC
 	if lowPC, ok := entry.Val(dwarf.AttrLowpc).(uint64); ok {
 		info.LowPC = lowPC
 	}
 
+	// Extract high PC
 	if highPC, ok := entry.Val(dwarf.AttrHighpc).(uint64); ok {
 		info.HighPC = highPC
 	}
 
+	// Extract line number
 	if line, ok := entry.Val(dwarf.AttrDeclLine).(int64); ok {
 		info.Line = int(line)
 	}
 
+	// Extract file
 	if file, ok := entry.Val(dwarf.AttrDeclFile).(string); ok {
 		info.File = file
 	}
 
+	// Get local variables for this subprogram
 	info.LocalVariables = p.getLocalVariables(entry)
 
 	return info, nil
 }
 
-// getLocalVariables extracts local variables for a subprogram by seeking to the
-// subprogram's offset in the reader and iterating its direct children.
+// getLocalVariables extracts local variables for a subprogram by reading the
+// consecutive child entries that follow the subprogram entry in the DWARF tree.
 func (p *Parser) getLocalVariables(subprog *dwarf.Entry) []LocalVar {
 	var locals []LocalVar
 
-	// Seek directly to the subprogram entry and iterate its children.
+	// Seek to just after the subprogram entry and read its children.
 	reader := p.data.Reader()
 	reader.Seek(subprog.Offset)
 
 	// Skip the subprogram entry itself.
-	_, err := reader.Next()
-	if err != nil {
-		return locals
-	}
-
-	// If the subprogram has no children flag, return early.
-	if !subprog.Children {
+	if _, err := reader.Next(); err != nil {
 		return locals
 	}
 
@@ -364,8 +362,7 @@ func (p *Parser) getLocalVariables(subprog *dwarf.Entry) []LocalVar {
 		if err != nil || entry == nil {
 			break
 		}
-
-		// A tag of 0 signals end of children for this subprogram.
+		// A tag of 0 marks the end of the subprogram's child list.
 		if entry.Tag == 0 {
 			break
 		}
@@ -376,11 +373,6 @@ func (p *Parser) getLocalVariables(subprog *dwarf.Entry) []LocalVar {
 				locals = append(locals, local)
 			}
 		}
-
-		// Skip nested children we don't care about.
-		if entry.Children {
-			reader.SkipChildren()
-		}
 	}
 
 	return locals
@@ -390,19 +382,23 @@ func (p *Parser) getLocalVariables(subprog *dwarf.Entry) []LocalVar {
 func (p *Parser) extractLocalVar(entry *dwarf.Entry) LocalVar {
 	local := LocalVar{}
 
+	// Get variable name
 	if name, ok := entry.Val(dwarf.AttrName).(string); ok {
 		local.Name = name
 		local.DemangledName = nameDemangle(name)
 	}
 
+	// Get type
 	if typ, ok := entry.Val(dwarf.AttrType).(dwarf.Offset); ok {
 		local.Type = p.getTypeName(typ)
 	}
 
+	// Get location
 	if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
 		local.Location = formatLocation(loc)
 	}
 
+	// Get line number
 	if line, ok := entry.Val(dwarf.AttrDeclLine).(int64); ok {
 		local.StartLine = int(line)
 		local.EndLine = int(line)
@@ -422,7 +418,23 @@ func (p *Parser) getTypeName(typeOffset dwarf.Offset) string {
 
 		if entry.Offset == typeOffset {
 			switch entry.Tag {
-			case dwarf.TagTypedef, dwarf.TagBaseType, dwarf.TagStructType, dwarf.TagUnionType, dwarf.TagEnumerationType:
+			case dwarf.TagTypedef:
+				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+					return name
+				}
+			case dwarf.TagBaseType:
+				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+					return name
+				}
+			case dwarf.TagStructType:
+				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+					return name
+				}
+			case dwarf.TagUnionType:
+				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
+					return name
+				}
+			case dwarf.TagEnumerationType:
 				if name, ok := entry.Val(dwarf.AttrName).(string); ok {
 					return name
 				}
@@ -465,6 +477,7 @@ func (p *Parser) FindLocalVarsAt(addr uint64) ([]LocalVar, error) {
 		return nil, err
 	}
 
+	// Filter variables that are in scope at this address
 	var inScope []LocalVar
 	for _, v := range subprogram.LocalVariables {
 		if addr >= uint64(v.StartLine) {
@@ -485,6 +498,7 @@ func (p *Parser) GetSourceLocation(addr uint64) (*SourceLocation, error) {
 		return nil, ErrNoDebugInfo
 	}
 
+	// Iterate compile units and use LineReader to map addr -> source line.
 	reader := p.data.Reader()
 	for {
 		entry, err := reader.Next()
@@ -493,38 +507,36 @@ func (p *Parser) GetSourceLocation(addr uint64) (*SourceLocation, error) {
 		}
 
 		if entry.Tag == dwarf.TagCompileUnit {
-			// Use LineReader (the real stdlib API) to walk line table entries.
 			lr, err := p.data.LineReader(entry)
-			if err == nil && lr != nil {
-				loc := p.findLineInProgram(lr, addr)
-				if loc != nil {
-					return loc, nil
-				}
+			if err != nil || lr == nil {
+				reader.SkipChildren()
+				continue
+			}
+			loc := p.findLineForAddr(lr, addr)
+			if loc != nil {
+				return loc, nil
 			}
 		}
 
-		if entry.Tag == 0 {
-			break
-		}
+		reader.SkipChildren()
 	}
 
 	return nil, fmt.Errorf("no source location found for address 0x%x", addr)
 }
 
-// findLineInProgram finds the source line for an address using the stdlib LineReader.
-func (p *Parser) findLineInProgram(lr *dwarf.LineReader, addr uint64) *SourceLocation {
+// findLineForAddr searches a LineReader for the entry that covers addr.
+func (p *Parser) findLineForAddr(lr *dwarf.LineReader, addr uint64) *SourceLocation {
 	var prev dwarf.LineEntry
-	var hasPrev bool
+	hasPrev := false
 
-	var entry dwarf.LineEntry
 	for {
-		err := lr.Next(&entry)
-		if err != nil {
+		var le dwarf.LineEntry
+		if err := lr.Next(&le); err != nil {
 			break
 		}
 
-		// Once we step past the target address, the previous entry was the match.
-		if hasPrev && entry.Address > addr {
+		// If the previous entry's address range covers addr, use that entry.
+		if hasPrev && prev.Address <= addr && addr < le.Address {
 			if prev.File != nil {
 				return &SourceLocation{
 					File:   prev.File.Name,
@@ -534,19 +546,27 @@ func (p *Parser) findLineInProgram(lr *dwarf.LineReader, addr uint64) *SourceLoc
 			}
 		}
 
-		if entry.IsStmt && entry.File != nil {
-			prev = entry
-			hasPrev = true
-		}
-
-		if entry.EndSequence {
+		if le.EndSequence {
 			hasPrev = false
+			continue
 		}
+		prev = le
+		hasPrev = true
 	}
 
 	return nil
 }
 
+// formatLocation formats a DWARF location expression byte sequence into a
+// human-readable string.  Only a small subset of opcodes is handled; the rest
+// fall through to a hex dump.
+//
+// DWARF location-expression opcodes used here:
+//
+//	0x03  DW_OP_addr          – followed by a target-address-sized literal
+//	0x9f  DW_OP_stack_value   – the value is the top of the expression stack
+//	0x00  (no-op / terminator in some older encodings)
+//
 // DWARF location expression opcodes (DW_OP_*) used in formatLocation.
 // These are defined in the DWARF spec and are not exported by debug/dwarf.
 const (
@@ -561,16 +581,19 @@ func formatLocation(loc []byte) string {
 		return ""
 	}
 
+	const (
+		opAddr       = 0x03 // DW_OP_addr
+		opStackValue = 0x9f // DW_OP_stack_value
+	)
+
 	switch loc[0] {
-	case dwOpStackValue:
+	case opStackValue:
 		return "immediate"
-	case dwOpAddr:
+	case opAddr:
 		if len(loc) >= 9 {
 			addr := binary.LittleEndian.Uint64(loc[1:])
 			return fmt.Sprintf("0x%x", addr)
 		}
-	case dwOpLit0:
-		return "end"
 	}
 
 	return fmt.Sprintf("location[0x%x]", loc[0])
@@ -578,7 +601,9 @@ func formatLocation(loc []byte) string {
 
 // nameDemangle attempts to demangle a name (simplified version)
 func nameDemangle(name string) string {
+	// Basic Rust demangling: _RNv... -> original name
 	if len(name) > 4 && name[:4] == "_RNv" {
+		// For now, just return the original
 		return name
 	}
 	return name
@@ -592,4 +617,122 @@ func (p *Parser) HasDebugInfo() bool {
 // BinaryType returns the type of binary being parsed
 func (p *Parser) BinaryType() string {
 	return p.binaryType
+}
+
+// InlinedSubroutineInfo describes a single inlined subroutine entry from DWARF.
+type InlinedSubroutineInfo struct {
+	Name            string
+	DemangledName   string
+	CallSite        SourceLocation
+	InlinedLocation SourceLocation
+	LowPC           uint64
+	HighPC          uint64
+}
+
+// ResolveInlinedChain returns the chain of inlined subroutines that contain
+// the given address. The result is ordered from outermost to innermost.
+func (p *Parser) ResolveInlinedChain(addr uint64) ([]InlinedSubroutineInfo, error) {
+	if p.data == nil {
+		return nil, ErrNoDebugInfo
+	}
+
+	reader := p.data.Reader()
+	var chain []InlinedSubroutineInfo
+
+	for {
+		entry, err := reader.Next()
+		if err != nil || entry == nil {
+			break
+		}
+		if entry.Tag != dwarf.TagInlinedSubroutine {
+			continue
+		}
+
+		lowPC, _ := entry.Val(dwarf.AttrLowpc).(uint64)
+		highPC, _ := entry.Val(dwarf.AttrHighpc).(uint64)
+
+		// AttrHighpc may be relative offset
+		if highPC < lowPC {
+			highPC = lowPC + highPC
+		}
+
+		if addr < lowPC || addr >= highPC {
+			continue
+		}
+
+		name, _ := entry.Val(dwarf.AttrName).(string)
+		callFile, _ := entry.Val(dwarf.AttrCallFile).(int64)
+		callLine, _ := entry.Val(dwarf.AttrCallLine).(int64)
+
+		info := InlinedSubroutineInfo{
+			Name:          name,
+			DemangledName: nameDemangle(name),
+			CallSite: SourceLocation{
+				Line: int(callLine),
+			},
+			InlinedLocation: SourceLocation{},
+			LowPC:           lowPC,
+			HighPC:          highPC,
+		}
+		_ = callFile // file resolution requires compilation unit context
+		chain = append(chain, info)
+	}
+
+	return chain, nil
+}
+
+// GetInlinedSubroutines returns all inlined subroutine entries that overlap
+// the given address. If p has no debug data, ErrNoDebugInfo is returned.
+func (p *Parser) GetInlinedSubroutines(addr uint64) ([]InlinedSubroutineInfo, error) {
+	return p.ResolveInlinedChain(addr)
+}
+
+// findSubprogramOffset returns the DWARF offset of the named subprogram,
+// or 0 if not found or parser has no data.
+func (p *Parser) findSubprogramOffset(name string) dwarf.Offset {
+	if p.data == nil {
+		return 0
+	}
+
+	reader := p.data.Reader()
+	for {
+		entry, err := reader.Next()
+		if err != nil || entry == nil {
+			break
+		}
+		if entry.Tag != dwarf.TagSubprogram {
+			continue
+		}
+		n, _ := entry.Val(dwarf.AttrName).(string)
+		if n == name {
+			return entry.Offset
+		}
+	}
+	return 0
+}
+
+// resolveFileIndex returns the file name for the given compilation unit
+// offset and file index. Returns "" if the index is invalid or data is nil.
+func (p *Parser) resolveFileIndex(cuOffset dwarf.Offset, fileIndex int) string {
+	if p.data == nil || fileIndex <= 0 {
+		return ""
+	}
+
+	reader := p.data.Reader()
+	reader.Seek(cuOffset)
+	entry, err := reader.Next()
+	if err != nil || entry == nil {
+		return ""
+	}
+
+	lr, err := p.data.LineReader(entry)
+	if err != nil || lr == nil {
+		return ""
+	}
+
+	files := lr.Files()
+	if fileIndex >= len(files) {
+		return ""
+	}
+	return files[fileIndex].Name
 }

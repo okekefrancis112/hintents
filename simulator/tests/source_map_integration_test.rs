@@ -34,9 +34,11 @@ const CRASH_ADDR: u64 = 0x1000;
 ///   `src/test.rs` line 42.
 fn build_wasm_fixture() -> Vec<u8> {
     let debug_line_bytes = build_debug_line_section();
-    let debug_info_bytes = minimal_debug_info_header();
+    let debug_abbrev_bytes = build_debug_abbrev_section();
+    let debug_info_bytes = build_debug_info_section();
 
     let mut wasm = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+    wasm.extend(wasm_custom_section(b".debug_abbrev", &debug_abbrev_bytes));
     wasm.extend(wasm_custom_section(b".debug_info", &debug_info_bytes));
     wasm.extend(wasm_custom_section(b".debug_line", &debug_line_bytes));
     wasm
@@ -97,15 +99,41 @@ fn build_debug_line_section() -> Vec<u8> {
     debug_line_bytes
 }
 
-/// Returns an 11-byte DWARF32/v4 compilation-unit header with no DIEs.
-/// This is the minimum content required for `object` to detect a `.debug_info`
-/// section and for `SourceMapper::has_debug_symbols` to return `true`.
-fn minimal_debug_info_header() -> Vec<u8> {
+/// Returns a `.debug_abbrev` section containing one abbreviation:
+///   abbrev code 1 = DW_TAG_compile_unit with a single DW_AT_stmt_list (DW_FORM_sec_offset).
+/// This is needed so the CU DIE in `.debug_info` can reference the `.debug_line` section.
+fn build_debug_abbrev_section() -> Vec<u8> {
     vec![
-        0x07, 0x00, 0x00, 0x00, // unit_length = 7 (bytes after this field)
-        0x04, 0x00, // DWARF version = 4
+        0x01, // abbreviation code = 1
+        0x11, // DW_TAG_compile_unit (uleb128)
+        0x00, // DW_CHILDREN_no
+        0x10, // DW_AT_stmt_list (uleb128)
+        0x17, // DW_FORM_sec_offset
+        0x00, 0x00, // end of attribute list
+        0x00, // end of abbreviation table
+    ]
+}
+
+/// Returns a `.debug_info` section with a CU header and a single DIE that
+/// references the `.debug_line` section at offset 0 via DW_AT_stmt_list.
+fn build_debug_info_section() -> Vec<u8> {
+    // CU header (DWARF32 v4):
+    //   unit_length: 4 bytes (length of everything after this field)
+    //   version: 2 bytes (= 4)
+    //   debug_abbrev_offset: 4 bytes (= 0)
+    //   address_size: 1 byte (= 4)
+    // DIE:
+    //   abbrev code: 1 (uleb128)
+    //   DW_AT_stmt_list value: 4 bytes (= 0, offset into .debug_line)
+    //
+    // Total after unit_length field = 2 + 4 + 1 + 1 + 4 = 12
+    vec![
+        0x0c, 0x00, 0x00, 0x00, // unit_length = 12
+        0x04, 0x00, // version = 4
         0x00, 0x00, 0x00, 0x00, // debug_abbrev_offset = 0
         0x04, // address_size = 4
+        0x01, // abbrev code = 1 (DW_TAG_compile_unit)
+        0x00, 0x00, 0x00, 0x00, // DW_AT_stmt_list = 0 (offset into .debug_line)
     ]
 }
 

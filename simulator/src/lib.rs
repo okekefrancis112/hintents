@@ -3,5 +3,6 @@
 
 #![allow(clippy::pedantic, clippy::nursery)]
 
+pub mod git_detector;
 pub mod source_map_cache;
 pub mod source_mapper;

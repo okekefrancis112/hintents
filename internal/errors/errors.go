@@ -8,6 +8,20 @@ import (
 	"fmt"
 )
 
+// formatBytes converts bytes to a human-readable string (e.g., "1.5 MB")
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
 // New is a proxy to the standard errors.New
 func New(text string) error {
 	return errors.New(text)
@@ -47,11 +61,13 @@ var (
 	ErrLedgerArchived       = errors.New("ledger has been archived")
 	ErrRateLimitExceeded    = errors.New("rate limit exceeded")
 	ErrRPCResponseTooLarge  = errors.New("RPC response too large")
+	ErrRPCRequestTooLarge   = errors.New("RPC request payload too large")
 	ErrConfigFailed         = errors.New("configuration error")
 	ErrNetworkNotFound      = errors.New("network not found")
 	ErrMissingLedgerKey     = errors.New("missing ledger key in footprint")
 	ErrWasmInvalid          = errors.New("invalid WASM file")
 	ErrSpecNotFound         = errors.New("contract spec not found")
+	ErrShellExit            = errors.New("exit")
 )
 
 type LedgerNotFoundError struct {
@@ -122,81 +138,82 @@ func (e *MissingLedgerKeyError) Is(target error) bool {
 
 // Wrap functions for consistent error wrapping
 func WrapTransactionNotFound(err error) error {
-	return fmt.Errorf("%w: %w", ErrTransactionNotFound, err)
+	return newErstError(CodeTransactionNotFound, "transaction not found", err)
 }
 
 func WrapRPCConnectionFailed(err error) error {
-	return fmt.Errorf("%w: %w", ErrRPCConnectionFailed, err)
+	return newErstError(CodeRPCConnectionFailed, "RPC connection failed", err)
 }
 
 func WrapSimulatorNotFound(msg string) error {
-	return fmt.Errorf("%w: %s", ErrSimulatorNotFound, msg)
+	return newErstError(CodeSimNotFound, msg, nil)
 }
 
 func WrapSimulationFailed(err error, stderr string) error {
-	return fmt.Errorf("%w: %w, stderr: %s", ErrSimulationFailed, err, stderr)
+	return newErstError(CodeSimExecFailed, stderr, err)
 }
 
 func WrapInvalidNetwork(network string) error {
-	return fmt.Errorf("%w: %s. Must be one of: testnet, mainnet, futurenet", ErrInvalidNetwork, network)
+	return newErstError(CodeInvalidNetwork, network+". Must be one of: testnet, mainnet, futurenet", nil)
 }
 
 func WrapMarshalFailed(err error) error {
-	return fmt.Errorf("%w: %w", ErrMarshalFailed, err)
+	return newErstError(CodeRPCMarshalFailed, "failed to marshal request", err)
 }
 
 func WrapUnmarshalFailed(err error, output string) error {
-	return fmt.Errorf("%w: %w, output: %s", ErrUnmarshalFailed, err, output)
+	return newErstError(CodeRPCUnmarshalFailed, output, err)
 }
 
 func WrapSimulationLogicError(msg string) error {
-	return fmt.Errorf("%w: %s", ErrSimulationLogicError, msg)
+	return newErstError(CodeSimLogicError, msg, nil)
 }
 
 func WrapRPCTimeout(err error) error {
-	return fmt.Errorf("%w: %w", ErrRPCTimeout, err)
+	return newErstError(CodeRPCTimeout, "RPC request timed out", err)
 }
 
 func WrapAllRPCFailed() error {
-	return ErrAllRPCFailed
+	return newErstError(CodeRPCAllFailed, "all RPC endpoints failed", nil)
 }
 
 func WrapRPCError(url string, msg string, code int) error {
-	return fmt.Errorf("%w from %s: %s (code %d)", ErrRPCError, url, msg, code)
+	return newErstError(CodeRPCError, fmt.Sprintf("from %s: %s (code %d)", url, msg, code), nil)
 }
 
 func WrapSimCrash(err error, stderr string) error {
-	if stderr != "" {
-		return fmt.Errorf("%w: %w, stderr: %s", ErrSimCrash, err, stderr)
+	msg := stderr
+	if msg == "" && err != nil {
+		msg = err.Error()
 	}
-	return fmt.Errorf("%w: %w", ErrSimCrash, err)
+	return newErstError(CodeSimCrash, msg, err)
 }
 
 func WrapValidationError(msg string) error {
-	return fmt.Errorf("%w: %s", ErrValidationFailed, msg)
+	return newErstError(CodeValidationFailed, msg, nil)
 }
 
 func WrapProtocolUnsupported(version uint32) error {
-	return fmt.Errorf("%w: %d", ErrProtocolUnsupported, version)
+	return newErstError(CodeSimProtoUnsup, fmt.Sprintf("unsupported protocol version: %d", version), nil)
 }
 
 func WrapCliArgumentRequired(arg string) error {
-	return fmt.Errorf("%w: --%s", ErrArgumentRequired, arg)
+	return newErstError(CodeValidationFailed, "--"+arg, nil)
 }
 
 func WrapAuditLogInvalid(msg string) error {
-	return fmt.Errorf("%w: %s", ErrAuditLogInvalid, msg)
+	return newErstError(CodeValidationFailed, msg, nil)
 }
 
 func WrapSessionNotFound(sessionID string) error {
-	return fmt.Errorf("%w: %s", ErrSessionNotFound, sessionID)
+	return newErstError(CodeValidationFailed, sessionID, nil)
 }
 
 func WrapUnauthorized(msg string) error {
 	if msg != "" {
-		return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
+		return newErstError(CodeUnauthorized, msg, nil)
 	}
-	return ErrUnauthorized
+	return newErstError(CodeUnauthorized, "unauthorized", nil)
 }
 
 func WrapLedgerNotFound(sequence uint32) error {
@@ -221,13 +238,13 @@ func WrapRateLimitExceeded() error {
 
 func WrapConfigError(msg string, err error) error {
 	if err != nil {
-		return fmt.Errorf("%w: %s: %v", ErrConfigFailed, msg, err)
+		return newErstError(CodeConfigFailed, msg+": "+err.Error(), err)
 	}
-	return fmt.Errorf("%w: %s", ErrConfigFailed, msg)
+	return newErstError(CodeConfigFailed, msg, nil)
 }
 
 func WrapNetworkNotFound(network string) error {
-	return fmt.Errorf("%w: %s", ErrNetworkNotFound, network)
+	return newErstError(CodeNetworkNotFound, network, nil)
 }
 
 func WrapWasmInvalid(msg string) error {
@@ -251,6 +268,20 @@ func WrapRPCResponseTooLarge(url string) error {
 	}
 }
 
+// WrapRPCRequestTooLarge returns an error when the JSON payload exceeds
+// the maximum allowed size (10MB) to prevent network submission.
+func WrapRPCRequestTooLarge(sizeBytes int64, maxSizeBytes int64) error {
+	return fmt.Errorf(
+		"%v: request payload size (%s) exceeds maximum allowed size (%s). "+
+			"This payload is too large to submit to the network. "+
+			"Consider reducing the amount of data being sent (e.g., fewer ledger entries, "+
+			"smaller transaction envelopes, or breaking the request into smaller chunks)",
+		ErrRPCRequestTooLarge,
+		formatBytes(sizeBytes),
+		formatBytes(maxSizeBytes),
+	)
+}
+
 func WrapMissingLedgerKey(key string) error {
 	return &MissingLedgerKeyError{Key: key}
 }
@@ -266,6 +297,7 @@ const (
 	CodeRPCAllFailed         ErstErrorCode = "RPC_ALL_ENDPOINTS_FAILED"
 	CodeRPCError             ErstErrorCode = "RPC_SERVER_ERROR"
 	CodeRPCResponseTooLarge  ErstErrorCode = "RPC_RESPONSE_TOO_LARGE"
+	CodeRPCRequestTooLarge   ErstErrorCode = "RPC_REQUEST_TOO_LARGE"
 	CodeRPCRateLimitExceeded ErstErrorCode = "RPC_RATE_LIMIT_EXCEEDED"
 	CodeRPCMarshalFailed     ErstErrorCode = "RPC_MARSHAL_FAILED"
 	CodeRPCUnmarshalFailed   ErstErrorCode = "RPC_UNMARSHAL_FAILED"
@@ -274,48 +306,95 @@ const (
 	CodeLedgerArchived       ErstErrorCode = "RPC_LEDGER_ARCHIVED"
 
 	// Simulator origin
-	CodeSimNotFound   ErstErrorCode = "SIM_BINARY_NOT_FOUND"
-	CodeSimCrash      ErstErrorCode = "SIM_PROCESS_CRASHED"
-	CodeSimExecFailed ErstErrorCode = "SIM_EXECUTION_FAILED"
-	CodeSimLogicError ErstErrorCode = "SIM_LOGIC_ERROR"
-	CodeSimProtoUnsup ErstErrorCode = "SIM_PROTOCOL_UNSUPPORTED"
+	CodeSimNotFound            ErstErrorCode = "SIM_BINARY_NOT_FOUND"
+	CodeSimCrash               ErstErrorCode = "SIM_PROCESS_CRASHED"
+	CodeSimExecFailed          ErstErrorCode = "SIM_EXECUTION_FAILED"
+	CodeSimMemoryLimitExceeded ErstErrorCode = "ERR_MEMORY_LIMIT_EXCEEDED"
+	CodeSimLogicError          ErstErrorCode = "SIM_LOGIC_ERROR"
+	CodeSimProtoUnsup          ErstErrorCode = "SIM_PROTOCOL_UNSUPPORTED"
 
 	// Shared / general
 	CodeValidationFailed ErstErrorCode = "VALIDATION_FAILED"
 	CodeUnknown          ErstErrorCode = "UNKNOWN"
+	CodeUnauthorized     ErstErrorCode = "UNAUTHORIZED"
+	CodeConfigFailed     ErstErrorCode = "CONFIG_ERROR"
+	CodeNetworkNotFound  ErstErrorCode = "NETWORK_NOT_FOUND"
+	CodeInvalidNetwork   ErstErrorCode = "INVALID_NETWORK"
 )
+
+// codeToSentinel maps each ErstErrorCode to its corresponding sentinel error
+// so that errors.Is(erstErr, sentinel) works reliably.
+var codeToSentinel = map[ErstErrorCode]error{
+	CodeRPCConnectionFailed:    ErrRPCConnectionFailed,
+	CodeRPCTimeout:             ErrRPCTimeout,
+	CodeRPCAllFailed:           ErrAllRPCFailed,
+	CodeRPCError:               ErrRPCError,
+	CodeRPCResponseTooLarge:    ErrRPCResponseTooLarge,
+	CodeRPCRequestTooLarge:     ErrRPCRequestTooLarge,
+	CodeRPCRateLimitExceeded:   ErrRateLimitExceeded,
+	CodeRPCMarshalFailed:       ErrMarshalFailed,
+	CodeRPCUnmarshalFailed:     ErrUnmarshalFailed,
+	CodeTransactionNotFound:    ErrTransactionNotFound,
+	CodeLedgerNotFound:         ErrLedgerNotFound,
+	CodeLedgerArchived:         ErrLedgerArchived,
+	CodeSimNotFound:            ErrSimulatorNotFound,
+	CodeSimCrash:               ErrSimCrash,
+	CodeSimExecFailed:          ErrSimulationFailed,
+	CodeSimMemoryLimitExceeded: ErrSimulationFailed,
+	CodeSimLogicError:          ErrSimulationLogicError,
+	CodeSimProtoUnsup:          ErrProtocolUnsupported,
+	CodeValidationFailed:       ErrValidationFailed,
+	CodeUnauthorized:           ErrUnauthorized,
+	CodeConfigFailed:           ErrConfigFailed,
+	CodeNetworkNotFound:        ErrNetworkNotFound,
+	CodeInvalidNetwork:         ErrInvalidNetwork,
+}
 
 // ErstError is the unified error type returned at all RPC and Simulator boundaries.
 // It carries a stable ErstErrorCode for programmatic handling and preserves the
-// original error string in OriginalError for backwards compatibility.
+// original error for backwards compatibility and error chain traversal.
 type ErstError struct {
-	Code          ErstErrorCode
-	Message       string // human-readable summary
-	OriginalError string // raw original error string, always preserved
+	Code     ErstErrorCode
+	Message  string // human-readable summary
+	original error  // wrapped original error, preserved for Unwrap
 }
 
 func (e *ErstError) Error() string {
-	if e.OriginalError != "" {
-		return string(e.Code) + ": " + e.OriginalError
+	parts := string(e.Code)
+	if e.Message != "" {
+		parts += ": " + e.Message
 	}
-	return string(e.Code) + ": " + e.Message
+	if e.original != nil && (e.Message == "" || e.Message != e.original.Error()) {
+		if e.Message != "" {
+			parts += ": " + e.original.Error()
+		} else {
+			parts += ": " + e.original.Error()
+		}
+	}
+	return parts
 }
 
-// Unwrap allows errors.Is/As to traverse the chain if needed.
+// Is allows errors.Is to match an ErstError against its corresponding sentinel
+// error via the codeToSentinel mapping.
+func (e *ErstError) Is(target error) bool {
+	if sentinel, ok := codeToSentinel[e.Code]; ok {
+		return target == sentinel
+	}
+	return false
+}
+
+// Unwrap returns the original wrapped error so that errors.Is and errors.As
+// can traverse the full error chain.
 func (e *ErstError) Unwrap() error {
-	return errors.New(e.OriginalError)
+	return e.original
 }
 
 // newErstError is the internal constructor.
 func newErstError(code ErstErrorCode, message string, original error) *ErstError {
-	orig := ""
-	if original != nil {
-		orig = original.Error()
+	if message == "" && original != nil {
+		message = original.Error()
 	}
-	if message == "" {
-		message = orig
-	}
-	return &ErstError{Code: code, Message: message, OriginalError: orig}
+	return &ErstError{Code: code, Message: message, original: original}
 }
 
 // --- Typed constructors for RPC boundary ---

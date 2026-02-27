@@ -28,10 +28,10 @@ impl SimHost {
         let budget = Budget::default();
 
         if let Some(_calib) = calibration {
-            // NOTE: Resource calibration is accepted but not yet applied to the budget.
-            // The CostModel API was removed in recent soroban-env-host versions.
-            // Budget uses default mainnet cost parameters.
-            eprintln!("Resource calibration provided but not applied (unsupported in this soroban-env-host version).");
+            // Note: In newer versions of soroban_env_host, the Budget interface
+            // no longer uses set_model() or CostModel directly like this.
+            // Resource calibration settings from the request are ignored
+            // in this simulator version to maintain compatibility with the SDK.
         }
 
         if let Some((_cpu, _mem)) = budget_limits {
@@ -91,11 +91,37 @@ impl SimHost {
             }
         }
     }
+
+    /// Rebuild the host with fresh ledger storage while preserving compiled WASM modules.
+    ///
+    /// This is useful for high-volume simulation/test loops where recreating and
+    /// recompiling modules is expensive, but each iteration needs an isolated ledger state.
+    pub fn wipe_ledger_state_preserving_modules(&mut self) -> Result<(), HostError> {
+        // Start each iteration with a fresh budget and storage snapshot.
+        let budget = Budget::default();
+
+        // Best-effort transfer of module cache. If the old host never initialized one,
+        // we still proceed with a clean host.
+        let module_cache = self.inner.take_module_cache().ok();
+
+        let fresh_host = Host::with_storage_and_budget(Storage::default(), budget);
+        fresh_host.set_diagnostic_level(DiagnosticLevel::Debug)?;
+
+        if let Some(cache) = module_cache {
+            fresh_host.set_module_cache(cache)?;
+        }
+
+        self.inner = fresh_host;
+        self.contract_id = None;
+        self.fn_name = None;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_env_host::ModuleCache;
 
     #[test]
     fn test_host_initialization() {
@@ -134,5 +160,40 @@ mod tests {
         let res_b = host.val_to_u32(val_b).expect("conversion failed");
 
         assert_eq!(res_a + res_b, 30);
+    }
+
+    #[test]
+    fn test_wipe_ledger_state_preserving_modules_without_cache() {
+        let mut host = SimHost::new(None, None, None);
+        let before = format!("{:?}", host.inner);
+
+        host.wipe_ledger_state_preserving_modules()
+            .expect("wipe should succeed");
+
+        let after = format!("{:?}", host.inner);
+        assert_ne!(before, after, "host instance should be rebuilt");
+    }
+
+    #[test]
+    fn test_wipe_ledger_state_preserving_modules_keeps_module_cache() {
+        let mut host = SimHost::new(None, None, None);
+
+        let cache = ModuleCache::new(&host.inner).expect("module cache should initialize");
+        host.inner
+            .set_module_cache(cache)
+            .expect("setting module cache should succeed");
+
+        host.wipe_ledger_state_preserving_modules()
+            .expect("wipe should succeed");
+
+        // If cache transfer worked, taking the cache from the rebuilt host succeeds.
+        let transferred = host
+            .inner
+            .take_module_cache()
+            .expect("module cache should be preserved after wipe");
+        // Put it back to leave host usable for any follow-on checks.
+        host.inner
+            .set_module_cache(transferred)
+            .expect("reinstalling module cache should succeed");
     }
 }
