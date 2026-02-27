@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 use crate::gas_optimizer::OptimizationReport;
+use crate::source_mapper::SourceLocation;
 use crate::stack_trace::WasmStackTrace;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -65,7 +66,7 @@ pub struct SimulationResponse {
     pub optimization_report: Option<OptimizationReport>,
     pub budget_usage: Option<BudgetUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_location: Option<String>,
+    pub source_location: Option<SourceLocation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stack_trace: Option<WasmStackTrace>,
     pub wasm_offset: Option<u64>,

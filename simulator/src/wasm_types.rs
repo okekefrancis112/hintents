@@ -6,6 +6,8 @@
 //! This module provides utilities to parse WebAssembly type sections and function tables,
 //! enabling detailed error messages when call_indirect traps occur.
 
+#![allow(dead_code)]
+
 use serde::Serialize;
 use wasmparser::{Parser, Payload, ValType};
 
@@ -167,22 +169,20 @@ impl TypeSection {
 
                     // RecGroup contains SubType entries
                     for sub_type in rec_group.types() {
-                        if let wasmparser::CompositeType::Func(func_type) = &sub_type.composite_type
-                        {
-                            let params = func_type
-                                .params()
-                                .iter()
-                                .map(|vt| ValueType::from_valtype(*vt))
-                                .collect();
+                        let func_type = sub_type.composite_type.unwrap_func();
+                        let params = func_type
+                            .params()
+                            .iter()
+                            .map(|vt| ValueType::from_valtype(*vt))
+                            .collect();
 
-                            let results = func_type
-                                .results()
-                                .iter()
-                                .map(|vt| ValueType::from_valtype(*vt))
-                                .collect();
+                        let results = func_type
+                            .results()
+                            .iter()
+                            .map(|vt| ValueType::from_valtype(*vt))
+                            .collect();
 
-                            types.push(FunctionSignature::new(params, results));
-                        }
+                        types.push(FunctionSignature::new(params, results));
                     }
                 }
             }

@@ -20,7 +20,6 @@ pub struct SourceLocation {
     pub line: u32,
     pub column: Option<u32>,
     pub column_end: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub github_link: Option<String>,
 }
 
@@ -261,6 +260,7 @@ impl SourceMapper {
         Some(location)
     }
 
+    #[allow(dead_code)]
     pub fn create_source_location(
         &self,
         file: String,

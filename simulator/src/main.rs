@@ -306,6 +306,23 @@ fn categorize_events(events: &soroban_env_host::events::Events) -> Vec<Categoriz
         .collect()
 }
 
+fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
+    if !topics
+        .iter()
+        .any(|t| t == "\"tick\"" || t == "tick" || t == "\"budget\"" || t == "budget")
+    {
+        return None;
+    }
+    if data.contains("Instruction:") {
+        let parts: Vec<&str> = data.split("Instruction:").collect();
+        if parts.len() > 1 {
+            let instr = parts[1].trim().trim_matches(|c| c == '"' || c == ' ');
+            return Some(instr.to_string());
+        }
+    }
+    None
+}
+
 /// Main entry point for the erst simulator.
 ///
 /// Reads a JSON `SimulationRequest` from stdin,
@@ -482,11 +499,9 @@ fn main() {
         }
     }
     // --- END: Local WASM Loading Integration ---
-
-    let mut loaded_entries_count = 0;
-
     // Populate Host Storage
-    if let Some(entries) = &request.ledger_entries {
+    let snapshot = if let Some(entries) = &request.ledger_entries {
+        let snap = simulator::snapshot::LedgerSnapshot::new();
         for (key_xdr, entry_xdr) in entries {
             // Decode Key
             let _key = match base64::engine::general_purpose::STANDARD.decode(key_xdr) {
@@ -527,9 +542,13 @@ fn main() {
             // TODO: Inject into host storage.
             // For MVP, we verify we can parse them.
             eprintln!("Parsed Ledger Entry: Key={:?}, Entry={:?}", _key, _entry);
-            loaded_entries_count += 1;
         }
-    }
+        snap
+    } else {
+        simulator::snapshot::LedgerSnapshot::new()
+    };
+
+    let loaded_entries_count = snapshot.len();
 
     // Extract Operations and Simulate
     let operations = match &envelope {
@@ -664,8 +683,8 @@ fn main() {
                                     contract_id,
                                     topics,
                                     data,
-                                    in_successful_contract_call: !event.failed_call,
                                     wasm_instruction,
+                                    in_successful_contract_call: !event.failed_call,
                                 }
                             })
                             .collect();
@@ -756,8 +775,7 @@ fn main() {
                 // mappable source location so callers can correlate failures.
                 source_location: source_mapper
                     .as_ref()
-                    .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
-                    .and_then(|loc| serde_json::to_string(&loc).ok()),
+                    .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0)),
                 linear_memory_dump: None,
             };
 
@@ -775,23 +793,124 @@ fn main() {
             let wasm_trace = WasmStackTrace::from_host_error(&error_debug);
             let trace_display = wasm_trace.display();
 
-            let structured_error = StructuredError {
-                error_type: "HostError".to_string(),
-                message: decoded_msg.clone(),
-                details: Some(format!(
-                    "Contract execution failed with host error: {}",
-                    decoded_msg
-                )),
+            let wasm_offset = extract_wasm_offset(&error_debug);
+
+            // Extract both raw event strings and structured diagnostic events
+            let (events, diagnostic_events): (Vec<String>, Vec<DiagnosticEvent>) = match host
+                .get_events()
+            {
+                Ok(evs) => {
+                    let raw_events: Vec<String> =
+                        evs.0.iter().map(|e| format!("{:?}", e)).collect();
+                    let diag_events: Vec<DiagnosticEvent> = evs
+                        .0
+                        .iter()
+                        .map(|event| {
+                            let event_type = match &event.event.type_ {
+                                soroban_env_host::xdr::ContractEventType::Contract => "contract",
+                                soroban_env_host::xdr::ContractEventType::System => "system",
+                                soroban_env_host::xdr::ContractEventType::Diagnostic => {
+                                    "diagnostic"
+                                }
+                            }
+                            .to_string();
+
+                            let contract_id = event
+                                .event
+                                .contract_id
+                                .as_ref()
+                                .map(|contract_id| format!("{:?}", contract_id));
+
+                            let (topics, data) = match &event.event.body {
+                                soroban_env_host::xdr::ContractEventBody::V0(v0) => {
+                                    let topics: Vec<String> =
+                                        v0.topics.iter().map(|t| format!("{:?}", t)).collect();
+                                    let data = format!("{:?}", v0.data);
+                                    (topics, data)
+                                }
+                            };
+
+                            let wasm_instruction = extract_wasm_instruction(&topics, &data);
+                            DiagnosticEvent {
+                                event_type,
+                                contract_id,
+                                topics,
+                                data,
+                                wasm_instruction,
+                                in_successful_contract_call: !event.failed_call,
+                            }
+                        })
+                        .collect();
+                    (raw_events, diag_events)
+                }
+                Err(_) => (
+                    vec!["Failed to retrieve events".to_string()],
+                    Vec::<DiagnosticEvent>::new(),
+                ),
             };
 
-            let wasm_offset = extract_wasm_offset(&error_debug);
+            // Capture categorized events for analyzer
+            let categorized_events = match host.get_events() {
+                Ok(evs) => categorize_events(&evs),
+                Err(_) => vec![],
+            };
+
+            // Heuristic to ignore Rust stdlib panic wrappers and find the actual source point
+            let mut user_panic_point = None;
+            for event in &diagnostic_events {
+                let mut combined_text = event.data.clone();
+                for topic in &event.topics {
+                    combined_text.push_str(" ");
+                    combined_text.push_str(topic);
+                }
+
+                if combined_text.contains("panicked")
+                    || combined_text.contains("Error")
+                    || combined_text.contains("Trap")
+                {
+                    // Ignore known Rust stdlib wrappers commonly seen in Backtrace/Diagnostic events
+                    if combined_text.contains("core/src/panicking.rs")
+                        || combined_text.contains("core::panicking")
+                        || combined_text.contains("rust_begin_unwind")
+                        || combined_text.contains("std::rt::lang_start")
+                        || combined_text.contains("compiler_builtins")
+                        || combined_text.contains("rustc_std_workspace")
+                    {
+                        continue;
+                    }
+
+                    // Look for common user paths (like src/lib.rs, etc)
+                    if combined_text.contains(".rs") && !combined_text.contains("soroban-env-host")
+                    {
+                        user_panic_point = Some(combined_text.replace("\"", ""));
+                        // Break after finding the first valid panic point
+                        break;
+                    }
+                }
+            }
+
+            let details = if let Some(ref point) = user_panic_point {
+                format!(
+                    "Contract execution failed with host error: {}. Panic point: {}",
+                    decoded_msg, point
+                )
+            } else {
+                format!("Contract execution failed with host error: {}", decoded_msg)
+            };
+
+            let structured_error = StructuredError {
+                error_type: "HostError".to_string(),
+                message: decoded_msg,
+                details: Some(details),
+            };
+
             let source_location =
                 if let (Some(offset), Some(mapper)) = (wasm_offset, &source_mapper) {
-                    mapper
-                        .map_wasm_offset_to_source(offset)
-                        .and_then(|loc| serde_json::to_string(&loc).ok())
+                    mapper.map_wasm_offset_to_source(offset)
                 } else {
-                    None
+                    source_mapper
+                        .as_ref()
+                        .and_then(|m: &SourceMapper| m.map_wasm_offset_to_source(0))
                 };
 
             let response = SimulationResponse {
@@ -805,9 +924,9 @@ fn main() {
                 error_code: None,
                 lcov_report: lcov_report.clone(),
                 lcov_report_path: lcov_report_path.clone(),
-                events: vec![],
-                diagnostic_events: vec![],
-                categorized_events: vec![],
+                events,
+                diagnostic_events,
+                categorized_events,
                 logs: vec![format!("Stack trace:\n{}", trace_display)],
                 flamegraph: None,
                 optimization_report: None,
@@ -869,26 +988,6 @@ fn main() {
                 println!("{{\"status\": \"error\", \"error\": \"Internal serialization error\"}}");
             }
         }
-    }
-}
-
-fn extract_wasm_instruction(topics: &[String], data: &str) -> Option<String> {
-    let has_budget_topic = topics.iter().any(|topic| {
-        let lower = topic.to_lowercase();
-        lower.contains("budget") || lower.contains("instruction")
-    });
-    if !has_budget_topic {
-        return None;
-    }
-
-    let marker = "Instruction:";
-    let idx = data.find(marker)?;
-    let mut instr = data[idx + marker.len()..].trim().to_string();
-    instr = instr.trim_matches('"').trim_matches('\'').to_string();
-    if instr.is_empty() {
-        None
-    } else {
-        Some(instr)
     }
 }
 
@@ -1028,16 +1127,18 @@ pub fn decode_error(raw: &str) -> String {
             .to_string();
     }
 
-    // Look for "Instruction: <opcode>" pattern in the raw error
-    if let Some(start) = raw.find("Instruction: ") {
-        let instr_start = start + "Instruction: ".len();
-        let rest = &raw[instr_start..];
-        // Find the end of the instruction (quote or end of string)
-        let end = rest.find('"').unwrap_or(rest.len());
-        return rest[..end].to_string();
+    // Look for "Instruction: <opcode>" pattern in the data
+    if raw.to_lowercase().contains("instruction:") {
+        if let Some(start) = raw.to_lowercase().find("instruction: ") {
+            let instr_start = start + "instruction: ".len();
+            let rest = &raw[instr_start..];
+            // Find the end of the instruction (quote or end of string)
+            let end = rest.find('"').unwrap_or(rest.len());
+            return rest[..end].to_string();
+        }
     }
 
-    if lower.contains("missing") || lower.contains("not found") {
+    if lower.contains("missing") || lower.contains("not found") || lower.contains("get failed") {
         let key_hint = extract_missing_key_id(raw);
         if let Some(key) = key_hint {
             return format!(
@@ -1051,6 +1152,9 @@ pub fn decode_error(raw: &str) -> String {
     // Fallback: return the raw message unchanged.
     raw.to_string()
 }
+
+#[cfg(test)]
+mod signature_verification_mock_test;
 
 #[cfg(test)]
 mod tests {

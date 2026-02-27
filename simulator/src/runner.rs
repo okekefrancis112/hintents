@@ -28,9 +28,10 @@ impl SimHost {
         let budget = Budget::default();
 
         if let Some(_calib) = calibration {
-            // Resource calibration hooks are currently best-effort. Newer
-            // soroban-env-host versions no longer expose the previous model API.
-            // We keep the request field for forward compatibility.
+            // Note: In newer versions of soroban_env_host, the Budget interface
+            // no longer uses set_model() or CostModel directly like this.
+            // Resource calibration settings from the request are ignored
+            // in this simulator version to maintain compatibility with the SDK.
         }
 
         if let Some((_cpu, _mem)) = budget_limits {
@@ -49,7 +50,7 @@ impl SimHost {
             inner: host,
             contract_id: None,
             fn_name: None,
-            memory_limit: memory_limit,
+            memory_limit,
         }
     }
 
