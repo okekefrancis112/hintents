@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (c) Hintents Authors.
+# SPDX-License-Identifier: Apache-2.0
 
 # Script to fix CI/CD failures related to go.mod/go.sum
 
