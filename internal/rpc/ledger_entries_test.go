@@ -12,9 +12,45 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// makeTestLedgerKey creates a valid base64-encoded XDR LedgerKey for testing.
+// Each call with a different index produces a unique key.
+func makeTestLedgerKey(t *testing.T, index int) string {
+	t.Helper()
+	// Build a unique 32-byte account ID from the index
+	var raw [32]byte
+	// Spread index bytes across the array for uniqueness
+	raw[0] = byte(index >> 24)
+	raw[1] = byte(index >> 16)
+	raw[2] = byte(index >> 8)
+	raw[3] = byte(index)
+	accountID, err := xdr.NewAccountId(xdr.PublicKeyTypePublicKeyTypeEd25519, xdr.Uint256(raw))
+	require.NoError(t, err)
+	key := xdr.LedgerKey{
+		Type: xdr.LedgerEntryTypeAccount,
+		Account: &xdr.LedgerKeyAccount{
+			AccountId: accountID,
+		},
+	}
+	encoded, err := EncodeLedgerKey(key)
+	require.NoError(t, err)
+	return encoded
+}
+
+// makeTestLedgerKeys creates n valid base64-encoded XDR LedgerKeys for testing.
+func makeTestLedgerKeys(t *testing.T, n int) []string {
+	t.Helper()
+	keys := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = makeTestLedgerKey(t, i)
+	}
+	return keys
+}
+
 
 // TestGetLedgerEntries_EmptyKeys tests that empty key list returns empty map
 func TestGetLedgerEntries_EmptyKeys(t *testing.T) {
@@ -34,6 +70,8 @@ func TestGetLedgerEntries_EmptyKeys(t *testing.T) {
 
 // TestGetLedgerEntries_FiveKeys tests fetching 5 related keys
 func TestGetLedgerEntries_FiveKeys(t *testing.T) {
+	keys := makeTestLedgerKeys(t, 5)
+
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req GetLedgerEntriesRequest
@@ -45,12 +83,12 @@ func TestGetLedgerEntries_FiveKeys(t *testing.T) {
 		assert.Equal(t, "getLedgerEntries", req.Method)
 		assert.Len(t, req.Params, 1)
 
-		keys := req.Params[0].([]interface{})
+		reqKeys := req.Params[0].([]interface{})
 
 		// Build response with entries for each key
-		entries := make([]LedgerEntryResult, len(keys))
+		entries := make([]LedgerEntryResult, len(reqKeys))
 
-		for i, key := range keys {
+		for i, key := range reqKeys {
 			entries[i] = LedgerEntryResult{
 				Key:                key.(string),
 				Xdr:                "mock_xdr_data_" + key.(string),
@@ -80,7 +118,6 @@ func TestGetLedgerEntries_FiveKeys(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	keys := []string{"key1", "key2", "key3", "key4", "key5"}
 
 	result, err := client.GetLedgerEntries(ctx, keys)
 
@@ -148,11 +185,8 @@ func TestGetLedgerEntries_LargeBatch(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Generate 120 keys to test batching
-	keys := make([]string, 120)
-	for i := 0; i < 120; i++ {
-		keys[i] = "key_" + string(rune('A'+i%26)) + string(rune('0'+i/26))
-	}
+	// Generate 120 valid XDR keys to test batching
+	keys := makeTestLedgerKeys(t, 120)
 
 	result, err := client.GetLedgerEntries(ctx, keys)
 
@@ -224,11 +258,8 @@ func TestGetLedgerEntries_ConcurrentBatches(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Generate 150 keys to ensure multiple batches
-	keys := make([]string, 150)
-	for i := 0; i < 150; i++ {
-		keys[i] = "concurrent_key_" + string(rune('A'+i%26)) + string(rune('0'+i/26))
-	}
+	// Generate 150 valid XDR keys to ensure multiple batches
+	keys := makeTestLedgerKeys(t, 150)
 
 	startTime := time.Now()
 	result, err := client.GetLedgerEntries(ctx, keys)

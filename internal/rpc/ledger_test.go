@@ -390,10 +390,10 @@ func TestGetLedgerHeader_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, IsLedgerNotFound(err), "should be ledger not found error")
 
-	var notFoundErr *errors.LedgerNotFoundError
-	require.True(t, errors.As(err, &notFoundErr))
-	assert.Equal(t, uint32(999999999), notFoundErr.Sequence)
-	assert.Contains(t, notFoundErr.Message, "not found")
+	var erstErr *errors.ErstError
+	require.True(t, errors.As(err, &erstErr))
+	assert.Equal(t, errors.ErstLedgerNotFound, erstErr.Code)
+	assert.Contains(t, erstErr.Message, "not found")
 }
 
 // TestGetLedgerHeader_Archived tests handling of archived ledgers
@@ -420,10 +420,10 @@ func TestGetLedgerHeader_Archived(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, IsLedgerArchived(err), "should be ledger archived error")
 
-	var archivedErr *errors.LedgerArchivedError
-	require.True(t, errors.As(err, &archivedErr))
-	assert.Equal(t, uint32(1), archivedErr.Sequence)
-	assert.Contains(t, archivedErr.Message, "archived")
+	var erstErr *errors.ErstError
+	require.True(t, errors.As(err, &erstErr))
+	assert.Equal(t, errors.ErstLedgerArchived, erstErr.Code)
+	assert.Contains(t, erstErr.Message, "archived")
 }
 
 // TestGetLedgerHeader_RateLimit tests handling of rate limit errors
@@ -450,9 +450,10 @@ func TestGetLedgerHeader_RateLimit(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, IsRateLimitError(err), "should be rate limit error")
 
-	var rateLimitErr *errors.RateLimitError
-	require.True(t, errors.As(err, &rateLimitErr))
-	assert.Contains(t, rateLimitErr.Message, "rate limit")
+	var erstErr *errors.ErstError
+	require.True(t, errors.As(err, &erstErr))
+	assert.Equal(t, errors.ErstRateLimitExceeded, erstErr.Code)
+	assert.Contains(t, erstErr.Message, "rate limit")
 }
 
 // TestGetLedgerHeader_Timeout tests context timeout handling

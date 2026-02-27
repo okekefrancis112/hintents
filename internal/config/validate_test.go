@@ -50,7 +50,7 @@ func TestNetworkValidator_Invalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid network")
 	}
-	if !strings.Contains(err.Error(), "invalid network") {
+	if !strings.Contains(err.Error(), "INVALID_NETWORK") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

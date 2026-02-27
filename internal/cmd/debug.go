@@ -1299,6 +1299,27 @@ func checkLTOWarning(wasmFilePath string) {
 	}
 }
 
+// parseEnvelopeXDRInput trims whitespace, validates that the input is valid
+// base64-encoded XDR, and returns the cleaned envelope string.
+func parseEnvelopeXDRInput(input string) (string, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return "", fmt.Errorf("envelope XDR input is empty")
+	}
+
+	data, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("invalid base64 envelope: %w", err)
+	}
+
+	var envelope xdr.TransactionEnvelope
+	if err := xdr.SafeUnmarshal(data, &envelope); err != nil {
+		return "", fmt.Errorf("invalid XDR envelope: %w", err)
+	}
+
+	return trimmed, nil
+}
+
 func displaySourceLocation(loc *simulator.SourceLocation) {
 	fmt.Printf("%s Location: %s:%d:%d\n", visualizer.Symbol("location"), loc.File, loc.Line, loc.Column)
 
